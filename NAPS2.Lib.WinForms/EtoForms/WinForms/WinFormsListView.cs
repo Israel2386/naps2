@@ -431,8 +431,49 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
 
     private void OnDragDrop(object? sender, DragEventArgs e)
     {
+        //var index = GetDragIndex(e);
+        //_view.InsertionMark.Index = -1;
+
+        Point cp = _view.PointToClient(new Point(e.X, e.Y));
+        ListViewItem? targetItem = _view.GetItemAt(cp.X, cp.Y);
+
+        if (Selection.Count == 1 && targetItem != null && !targetItem.Selected)
+        {
+            Rectangle bounds = targetItem.Bounds;
+            int horizontalMargin = bounds.Width / 5;
+            Rectangle centerArea = new Rectangle(
+                bounds.X + horizontalMargin,
+                bounds.Y + 5,
+                bounds.Width - (horizontalMargin * 2),
+                bounds.Height - 5 - (bounds.Height / 4)
+            );
+
+            if (centerArea.Contains(cp))
+            {
+                _view.InsertionMark.Index = -1;
+                var sourceItem = Selection.First();
+                var targetPage = (T)targetItem.Tag!;
+
+                //System.Diagnostics.Debug.WriteLine($"[COMBINAR CREDENCIAL]: {sourceItem} con {targetPage}");
+                // Empaquetamos ambas referencias o sus índices
+                int targetIndex = targetItem.Index;
+
+                // Disparamos el evento pasando la posición destino
+                var data = e.Data.ToEto();
+                if (data.Contains(_behavior.CustomDragDataType))
+                {
+                    // Pasamos un flag o usamos el targetIndex
+                    Drop?.Invoke(this, new DropEventArgs(targetIndex, EtoPlatform.Current.GetData(data, _behavior.CustomDragDataType)));
+                }
+        
+                return;
+            }
+        }
+
+        // Si cayó entre hojas (reordenar común), continúa el flujo normal:
         var index = GetDragIndex(e);
         _view.InsertionMark.Index = -1;
+
         if (index != -1)
         {
             var data = e.Data.ToEto();
@@ -468,8 +509,48 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
-        if (e.Effect == DragDropEffects.Move && Items.Count > 0)
+        if (e.Effect != DragDropEffects.None && Items.Count > 0)
         {
+            Point cp = _view.PointToClient(new Point(e.X, e.Y));
+            ListViewItem? hoverItem = _view.GetItemAt(cp.X, cp.Y);
+
+            bool isOverImageCenter = false;
+
+            if (hoverItem != null && Selection.Count == 1 && !hoverItem.Selected)
+            {
+                // Tomamos el área total del ítem
+                Rectangle itemBounds = hoverItem.Bounds;
+
+                // Reducimos el rectángulo (hitbox) hacia el centro.
+                // Dejamos un margen del 20% a los lados para permitir insertar hojas entre ellas
+                int horizontalMargin = itemBounds.Width / 5;
+                int topMargin = 5;
+                int bottomMargin = itemBounds.Height / 4; // Excluye el texto del pie de página
+
+                Rectangle centerArea = new Rectangle(
+                    itemBounds.X + horizontalMargin,
+                    itemBounds.Y + topMargin,
+                    itemBounds.Width - (horizontalMargin * 2),
+                    itemBounds.Height - topMargin - bottomMargin
+                );
+
+                // Solo combinamos si el cursor está dentro del núcleo de la hoja
+                if (centerArea.Contains(cp))
+                {
+                    isOverImageCenter = true;
+                }
+            }
+
+            // ACCIÓN 1: Cursor en el centro de la hoja -> MODO COMBINAR (Credencial)
+            if (isOverImageCenter)
+            {
+                _view.InsertionMark.Index = -1; // Oculta la barra de inserción
+                e.Effect = DragDropEffects.Copy; // Muestra el signo "+"
+                return;
+            }
+
+            // ACCIÓN 2: Cursor en los márgenes, espacios vacíos o bordes -> MODO REORDENAR
+            e.Effect = DragDropEffects.Move;
             var index = GetDragIndex(e);
             if (index == Items.Count)
             {

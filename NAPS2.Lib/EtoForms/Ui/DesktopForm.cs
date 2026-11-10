@@ -1,6 +1,3 @@
-using System.Collections.Immutable;
-using System.ComponentModel;
-using System.Threading;
 using Eto.Drawing;
 using Eto.Forms;
 using NAPS2.EtoForms.Desktop;
@@ -9,6 +6,11 @@ using NAPS2.EtoForms.Notifications;
 using NAPS2.EtoForms.Widgets;
 using NAPS2.ImportExport.Images;
 using NAPS2.Scan;
+using NLog.Targets;
+using System.Collections.Immutable;
+using System.ComponentModel;
+using System.Threading;
+using NAPS2.Images;
 
 namespace NAPS2.EtoForms.Ui;
 
@@ -671,6 +673,21 @@ public abstract class DesktopForm : EtoFormBase
             var data = _imageTransfer.FromBinaryData(args.CustomData);
             if (data.ProcessId == Process.GetCurrentProcess().Id)
             {
+                var selectionList = ImageList.Selection.ToList();
+
+                // Verificamos si se arrastró exactamente 1 hoja y cayó sobre un índice válido
+                if (selectionList.Count == 1 && args.Position >= 0 && args.Position < ImageList.Images.Count)
+                {
+                    var sourceItem = selectionList[0];
+                    var targetItem = ImageList.Images[args.Position];
+
+                    if (!ReferenceEquals(sourceItem, targetItem))
+                    {
+                        CombineCredential(sourceItem, targetItem);
+                        return;
+                    }
+                }
+
                 DragMoveImages(args.Position);
             }
             else
@@ -682,6 +699,49 @@ public abstract class DesktopForm : EtoFormBase
         {
             _desktopController.ImportFiles(args.FilePaths);
         }
+    }
+
+    private void CombineCredential(UiImage sourceUi, UiImage targetUi)
+    {
+        using var sourceProcessed = sourceUi.GetClonedImage();
+        using var targetProcessed = targetUi.GetClonedImage();
+
+        using var sourceMem = sourceProcessed.ImageContext.Render(sourceProcessed);
+        using var targetMem = targetProcessed.ImageContext.Render(targetProcessed);
+
+        // targetMem es la base (fondo) y sourceMem es la que se superpone (primer plano)
+        // Los píxeles no blancos de sourceMem sobrescribirán a los de targetMem
+        using var combinedMem = CredentialMerger.Merge(baseImage: targetMem, overlayImage: sourceMem, whiteThreshold: 220);
+
+        if (targetProcessed.Storage is not ImageFileStorage targetStorage)
+        {
+            return;
+        }
+
+        string originalDir = Path.GetDirectoryName(targetStorage.FullPath)!;
+        string newFilePath = Path.Combine(originalDir, $"{Guid.NewGuid():N}.png");
+
+        using (var fileStream = new FileStream(newFilePath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+        {
+            combinedMem.Save(fileStream, ImageFileFormat.Png);
+            fileStream.Flush(true);
+        }
+
+        var fileStorage = new ImageFileStorage(newFilePath);
+
+        var newProcessed = new ProcessedImage(
+            combinedMem.ImageContext,
+            fileStorage,
+            targetProcessed.Metadata,
+            new PostProcessingData(),
+            TransformState.Empty,
+            new RefCount(fileStorage)
+        );
+
+        var combinedUi = new UiImage(newProcessed, useThumbnail: false);
+
+        // Reemplaza targetUi y sourceUi por la combinada
+        ImageList.Mutate(new ImageListMutation.MergeCredential(sourceUi, targetUi, combinedUi), ImageList.Selection);
     }
 
     private void DragMoveImages(int position)
@@ -700,4 +760,5 @@ public abstract class DesktopForm : EtoFormBase
     {
         _sidebar.ToggleVisibility();
     }
+
 }

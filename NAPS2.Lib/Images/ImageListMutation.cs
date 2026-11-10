@@ -52,4 +52,33 @@ public abstract class ImageListMutation : ListMutation<UiImage>
             }
         }
     }
+
+    public class MergeCredential(UiImage front, UiImage back, UiImage combined) : ImageListMutation
+    {
+        public override void Apply(List<UiImage> list, ref ListSelection<UiImage> selection)
+        {
+            int targetIndex = list.IndexOf(back);
+            if (targetIndex == -1)
+            {
+                targetIndex = list.IndexOf(front);
+            }
+
+            // Removemos las dos hojas separadas
+            list.Remove(front);
+            list.Remove(back);
+
+            // Insertamos la credencial en la posición de destino
+            if (targetIndex >= 0 && targetIndex <= list.Count)
+            {
+                list.Insert(targetIndex, combined);
+            }
+            else
+            {
+                list.Add(combined);
+            }
+
+            // Seleccionamos la nueva imagen generada
+            selection = ListSelection.From([combined]);
+        }
+    }
 }

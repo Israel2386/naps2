@@ -29,8 +29,10 @@
       <BuildType Solution="Tools|*" Project="Debug" />
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Mac|*" Project="false" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Sdk|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
@@ -86,6 +88,7 @@
       <BuildType Solution="Tools|*" Project="Debug" />
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Mac|*" Project="false" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
       <Build Solution="Release-Msi|*" Project="false" />
@@ -104,6 +107,7 @@
       <BuildType Solution="Release-Zip|*" Project="Release" />
       <BuildType Solution="Sdk|*" Project="Release" />
       <BuildType Solution="Tools|*" Project="Debug" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
       <Build Solution="Release-Msi|*" Project="false" />
@@ -127,6 +131,7 @@
       <BuildType Solution="Tools|*" Project="Debug" />
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Mac|*" Project="false" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
       <Build Solution="Sdk|*" Project="false" />
@@ -147,8 +152,10 @@
       <BuildType Solution="Tools|*" Project="Debug" />
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Mac|*" Project="false" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Sdk|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
@@ -166,8 +173,10 @@
       <BuildType Solution="Tools|*" Project="Debug" />
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Mac|*" Project="false" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Sdk|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
@@ -185,6 +194,8 @@
       <BuildType Solution="Release-Zip|*" Project="Release" />
       <BuildType Solution="Sdk|*" Project="Release" />
       <BuildType Solution="Tools|*" Project="Debug" />
+      <Build Solution="Debug-Windows|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
     <Project Path="NAPS2.Escl.Tests/NAPS2.Escl.Tests.csproj">
@@ -199,6 +210,7 @@
       <BuildType Solution="Release-Zip|*" Project="Release" />
       <BuildType Solution="Sdk|*" Project="Release" />
       <BuildType Solution="Tools|*" Project="Debug" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
       <Build Solution="Release-Msi|*" Project="false" />
@@ -219,6 +231,7 @@
       <BuildType Solution="Release-Zip|*" Project="Release" />
       <BuildType Solution="Sdk|*" Project="Release" />
       <BuildType Solution="Tools|*" Project="Debug" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
       <Build Solution="Release-Windows|*" Project="false" />
@@ -236,6 +249,8 @@
       <BuildType Solution="Release-Zip|*" Project="Release" />
       <BuildType Solution="Sdk|*" Project="Release" />
       <BuildType Solution="Tools|*" Project="Debug" />
+      <Build Solution="Debug-Windows|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
   </Folder>
@@ -254,8 +269,10 @@
       <BuildType Solution="Tools|*" Project="Debug" />
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Mac|*" Project="false" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
     <Project Path="NAPS2.Images.Gtk/NAPS2.Images.Gtk.csproj">
@@ -288,6 +305,7 @@
       <BuildType Solution="Release-Zip|*" Project="Release" />
       <BuildType Solution="Sdk|*" Project="Release" />
       <BuildType Solution="Tools|*" Project="Debug" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
       <Build Solution="Release-Windows|*" Project="false" />
@@ -308,6 +326,7 @@
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
     <Project Path="NAPS2.Images.Wpf/NAPS2.Images.Wpf.csproj">
@@ -324,8 +343,10 @@
       <BuildType Solution="Tools|*" Project="Debug" />
       <Build Solution="Debug-Linux|*" Project="false" />
       <Build Solution="Debug-Mac|*" Project="false" />
+      <Build Solution="Debug-Windows|*" Project="false" />
       <Build Solution="Release-Linux|*" Project="false" />
       <Build Solution="Release-Mac|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
     <Project Path="NAPS2.Images/NAPS2.Images.csproj">
@@ -340,6 +361,8 @@
       <BuildType Solution="Release-Zip|*" Project="Release" />
       <BuildType Solution="Sdk|*" Project="Release" />
       <BuildType Solution="Tools|*" Project="Debug" />
+      <Build Solution="Debug-Windows|*" Project="false" />
+      <Build Solution="Release-Windows|*" Project="false" />
       <Build Solution="Tools|*" Project="false" />
     </Project>
   </Folder>
@@ -355,6 +378,8 @@
     <BuildType Solution="Release-Zip|*" Project="Release" />
     <BuildType Solution="Sdk|*" Project="Release" />
     <BuildType Solution="Tools|*" Project="Debug" />
+    <Build Solution="Debug-Windows|*" Project="false" />
+    <Build Solution="Release-Windows|*" Project="false" />
     <Build Solution="Tools|*" Project="false" />
   </Project>
   <Project Path="NAPS2.Lib.Gtk/NAPS2.Lib.Gtk.csproj">
@@ -407,6 +432,7 @@
     <BuildType Solution="Release-Zip|*" Project="Release" />
     <BuildType Solution="Sdk|*" Project="Release" />
     <BuildType Solution="Tools|*" Project="Debug" />
+    <Build Solution="Debug-Windows|*" Project="false" />
     <Build Solution="Release-Linux|*" Project="false" />
     <Build Solution="Release-Mac|*" Project="false" />
     <Build Solution="Release-Msi|*" Project="false" />
@@ -428,8 +454,10 @@
     <BuildType Solution="Tools|*" Project="Debug" />
     <Build Solution="Debug-Linux|*" Project="false" />
     <Build Solution="Debug-Mac|*" Project="false" />
+    <Build Solution="Debug-Windows|*" Project="false" />
     <Build Solution="Release-Linux|*" Project="false" />
     <Build Solution="Release-Mac|*" Project="false" />
+    <Build Solution="Release-Windows|*" Project="false" />
     <Build Solution="Sdk|*" Project="false" />
     <Build Solution="Tools|*" Project="false" />
   </Project>
@@ -446,8 +474,10 @@
     <BuildType Solution="Tools|*" Project="Debug" />
     <Build Solution="Debug-Linux|*" Project="false" />
     <Build Solution="Debug-Mac|*" Project="false" />
+    <Build Solution="Debug-Windows|*" Project="false" />
     <Build Solution="Release-Linux|*" Project="false" />
     <Build Solution="Release-Mac|*" Project="false" />
+    <Build Solution="Release-Windows|*" Project="false" />
     <Build Solution="Sdk|*" Project="false" />
     <Build Solution="Tools|*" Project="false" />
   </Project>
@@ -460,6 +490,8 @@
     <BuildType Solution="Release-Windows|*" Project="Release" />
     <BuildType Solution="Sdk|*" Project="Release" />
     <BuildType Solution="Tools|*" Project="Debug" />
+    <Build Solution="Debug-Windows|*" Project="false" />
+    <Build Solution="Release-Windows|*" Project="false" />
     <Build Solution="Sdk|*" Project="false" />
     <Build Solution="Tools|*" Project="false" />
   </Project>
@@ -477,6 +509,7 @@
     <BuildType Solution="Tools|*" Project="Debug" />
     <Build Solution="Debug-Linux|*" Project="false" />
     <Build Solution="Debug-Mac|*" Project="false" />
+    <Build Solution="Debug-Windows|*" Project="false" />
     <Build Solution="Release-Linux|*" Project="false" />
     <Build Solution="Release-Mac|*" Project="false" />
     <Build Solution="Release-Windows|*" Project="false" />
@@ -496,6 +529,7 @@
     <BuildType Solution="Release-Zip|*" Project="Release" />
     <BuildType Solution="Sdk|*" Project="Release" />
     <BuildType Solution="Tools|*" Project="Debug" />
+    <Build Solution="Debug-Windows|*" Project="false" />
     <Build Solution="Release-Linux|*" Project="false" />
     <Build Solution="Release-Mac|*" Project="false" />
     <Build Solution="Release-Msi|*" Project="false" />
@@ -516,6 +550,7 @@
     <BuildType Solution="Release-Zip|*" Project="Release" />
     <BuildType Solution="Sdk|*" Project="Release" />
     <BuildType Solution="Tools|*" Project="Debug" />
+    <Build Solution="Debug-Windows|*" Project="false" />
     <Build Solution="Release-Linux|*" Project="false" />
     <Build Solution="Release-Mac|*" Project="false" />
     <Build Solution="Release-Msi|*" Project="false" />
@@ -574,6 +609,8 @@
     <BuildType Solution="Release-Zip|*" Project="Release" />
     <BuildType Solution="Sdk|*" Project="Release" />
     <BuildType Solution="Tools|*" Project="Debug" />
+    <Build Solution="Debug-Windows|*" Project="false" />
+    <Build Solution="Release-Windows|*" Project="false" />
     <Build Solution="Tools|*" Project="false" />
   </Project>
   <Project Path="NAPS2.Setup/NAPS2.Setup.csproj">
