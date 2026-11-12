@@ -104,4 +104,44 @@ public class PrintDocumentPrinter : IScannedImagePrinter
             return true;
         });
     }
+
+    public async Task<bool> PrintSilent(IList<ProcessedImage> images, bool highQuality = false)
+    {
+        if (!images.Any())
+        {
+            return false;
+        }
+
+        var settings = new PrinterSettings();
+
+        if (highQuality)
+        {
+            PrinterResolution? highestRes = settings.PrinterResolutions
+                .Cast<PrinterResolution>()
+                .FirstOrDefault(r => r.Kind == PrinterResolutionKind.High)
+                ?? settings.PrinterResolutions
+                    .Cast<PrinterResolution>()
+                    .OrderByDescending(r => r.X * r.Y)
+                    .FirstOrDefault();
+
+            if (highestRes != null)
+            {
+                settings.DefaultPageSettings.PrinterResolution = highestRes;
+            }
+
+            PaperSource? plainSource = settings.PaperSources
+                .Cast<PaperSource>()
+                .FirstOrDefault(s =>
+                    s.Kind == PaperSourceKind.AutomaticFeed ||
+                    s.SourceName.Contains("Normal", StringComparison.OrdinalIgnoreCase) ||
+                    s.SourceName.Contains("Plain", StringComparison.OrdinalIgnoreCase));
+
+            if (plainSource != null)
+            {
+                settings.DefaultPageSettings.PaperSource = plainSource;
+            }
+        }
+
+        return await Print(settings, images, images);
+    }
 }

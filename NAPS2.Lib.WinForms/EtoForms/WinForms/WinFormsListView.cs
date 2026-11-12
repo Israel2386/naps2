@@ -431,13 +431,16 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
 
     private void OnDragDrop(object? sender, DragEventArgs e)
     {
-        //var index = GetDragIndex(e);
-        //_view.InsertionMark.Index = -1;
-
         Point cp = _view.PointToClient(new Point(e.X, e.Y));
         ListViewItem? targetItem = _view.GetItemAt(cp.X, cp.Y);
 
-        if (Selection.Count == 1 && targetItem != null && !targetItem.Selected)
+        var data = e.Data.ToEto();
+        bool isInternalDrag = data != null && data.Contains(_behavior.CustomDragDataType);
+
+        int sourceIndex = _view.SelectedIndices.Count > 0 ? _view.SelectedIndices[0] : -1;
+
+        // 1. COMBINAR SOLO SI ES UN ARRASTRE INTERNO DE NAPS2
+        if (isInternalDrag && _view.SelectedIndices.Count == 1 && targetItem != null && targetItem.Index != sourceIndex)
         {
             Rectangle bounds = targetItem.Bounds;
             int horizontalMargin = bounds.Width / 5;
@@ -451,57 +454,46 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
             if (centerArea.Contains(cp))
             {
                 _view.InsertionMark.Index = -1;
-                var sourceItem = Selection.First();
-                var targetPage = (T)targetItem.Tag!;
-
-                //System.Diagnostics.Debug.WriteLine($"[COMBINAR CREDENCIAL]: {sourceItem} con {targetPage}");
-                // Empaquetamos ambas referencias o sus índices
                 int targetIndex = targetItem.Index;
+                int mergeSignal = -(targetIndex + 1);
 
-                // Disparamos el evento pasando la posición destino
-                var data = e.Data.ToEto();
-                if (data.Contains(_behavior.CustomDragDataType))
-                {
-                    // Pasamos un flag o usamos el targetIndex
-                    Drop?.Invoke(this, new DropEventArgs(targetIndex, EtoPlatform.Current.GetData(data, _behavior.CustomDragDataType)));
-                }
-        
+                Drop?.Invoke(this, new DropEventArgs(mergeSignal, EtoPlatform.Current.GetData(data!, _behavior.CustomDragDataType)));
                 return;
             }
         }
 
-        // Si cayó entre hojas (reordenar común), continúa el flujo normal:
+        // 2. REORDENAR O IMPORTAR ARCHIVOS EXTERNOS (FileDrop)
         var index = GetDragIndex(e);
         _view.InsertionMark.Index = -1;
 
-        if (index != -1)
+        // Solo cancelar micro-movimientos si es un arrastre interno
+        if (isInternalDrag && sourceIndex != -1 && (index == sourceIndex || index == sourceIndex + 1))
         {
-            var data = e.Data.ToEto();
-            // TODO: Figure out why .Contains is not working correctly on net9
+            return;
+        }
+
+        if (index != -1 && data != null)
+        {
             try
             {
-                if (data.Contains(_behavior.CustomDragDataType))
+                if (isInternalDrag)
                 {
                     Drop?.Invoke(this, new DropEventArgs(index, EtoPlatform.Current.GetData(data, _behavior.CustomDragDataType)));
                 }
             }
-            catch (COMException)
-            {
-            }
+            catch (COMException) { }
+
             try
             {
                 if (data.Contains("FileDrop"))
                 {
-                    var filePaths = (string[]) e.Data!.GetData(DataFormats.FileDrop)!;
+                    var filePaths = (string[])e.Data!.GetData(DataFormats.FileDrop)!;
                     Drop?.Invoke(this, new DropEventArgs(index, filePaths));
                 }
             }
-            catch (COMException)
-            {
-            }
+            catch (COMException) { }
         }
     }
-
     private void OnDragLeave(object? sender, EventArgs e)
     {
         _view.InsertionMark.Index = -1;
@@ -511,21 +503,21 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
     {
         if (e.Effect != DragDropEffects.None && Items.Count > 0)
         {
+            var data = e.Data.ToEto();
+            bool isInternalDrag = data != null && data.Contains(_behavior.CustomDragDataType);
+
             Point cp = _view.PointToClient(new Point(e.X, e.Y));
             ListViewItem? hoverItem = _view.GetItemAt(cp.X, cp.Y);
 
             bool isOverImageCenter = false;
 
-            if (hoverItem != null && Selection.Count == 1 && !hoverItem.Selected)
+            // Solo activar modo combinar si es arrastre interno
+            if (isInternalDrag && hoverItem != null && Selection.Count == 1 && !hoverItem.Selected)
             {
-                // Tomamos el área total del ítem
                 Rectangle itemBounds = hoverItem.Bounds;
-
-                // Reducimos el rectángulo (hitbox) hacia el centro.
-                // Dejamos un margen del 20% a los lados para permitir insertar hojas entre ellas
                 int horizontalMargin = itemBounds.Width / 5;
                 int topMargin = 5;
-                int bottomMargin = itemBounds.Height / 4; // Excluye el texto del pie de página
+                int bottomMargin = itemBounds.Height / 4;
 
                 Rectangle centerArea = new Rectangle(
                     itemBounds.X + horizontalMargin,
@@ -534,18 +526,16 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
                     itemBounds.Height - topMargin - bottomMargin
                 );
 
-                // Solo combinamos si el cursor está dentro del núcleo de la hoja
                 if (centerArea.Contains(cp))
                 {
                     isOverImageCenter = true;
                 }
             }
 
-            // ACCIÓN 1: Cursor en el centro de la hoja -> MODO COMBINAR (Credencial)
             if (isOverImageCenter)
             {
-                _view.InsertionMark.Index = -1; // Oculta la barra de inserción
-                e.Effect = DragDropEffects.Copy; // Muestra el signo "+"
+                _view.InsertionMark.Index = -1;
+                e.Effect = DragDropEffects.Copy;
                 return;
             }
 

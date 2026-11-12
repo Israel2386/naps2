@@ -81,4 +81,42 @@ public abstract class ImageListMutation : ListMutation<UiImage>
             selection = ListSelection.From([combined]);
         }
     }
+    public class UnmergeCredential(UiImage front, int frontIndex, UiImage back, int backIndex, UiImage combined) : ImageListMutation
+    {
+        public override void Apply(List<UiImage> list, ref ListSelection<UiImage> selection)
+        {
+            list.Remove(combined);
+
+            var itemsToRestore = new[] { (front, frontIndex), (back, backIndex) }
+                .OrderBy(x => x.Item2)
+                .ToList();
+
+            foreach (var (img, idx) in itemsToRestore)
+            {
+                if (!list.Contains(img))
+                {
+                    int insertPos = (idx >= 0 && idx <= list.Count) ? idx : list.Count;
+                    list.Insert(insertPos, img);
+                }
+            }
+
+            selection = ListSelection.From([front, back]);
+        }
+    }
+    public class RedoMergeCredential(UiImage front, UiImage back, UiImage combined, int targetIndex) : ImageListMutation
+    {
+        public override void Apply(List<UiImage> list, ref ListSelection<UiImage> selection)
+        {
+            list.Remove(front);
+            list.Remove(back);
+
+            int insertPos = (targetIndex >= 0 && targetIndex <= list.Count) ? targetIndex : list.Count;
+            if (!list.Contains(combined))
+            {
+                list.Insert(insertPos, combined);
+            }
+
+            selection = ListSelection.From([combined]);
+        }
+    }
 }

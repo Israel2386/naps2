@@ -282,7 +282,7 @@ public class WinFormsEtoPlatform : EtoPlatform
 
     public override LayoutElement FormatProgressBar(ProgressBar progressBar)
     {
-        return progressBar.Size(420, 10);
+        return progressBar.Size(420, 20);
     }
 
     public override void InitForm(Window window)

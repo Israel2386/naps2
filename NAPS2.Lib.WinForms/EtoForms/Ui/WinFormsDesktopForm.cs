@@ -1,6 +1,3 @@
-using System.ComponentModel;
-using System.Drawing;
-using System.Linq.Expressions;
 using Eto.Forms;
 using Eto.WinForms;
 using Eto.WinForms.Forms.ToolBar;
@@ -11,6 +8,10 @@ using NAPS2.EtoForms.Widgets;
 using NAPS2.EtoForms.WinForms;
 using NAPS2.Scan;
 using NAPS2.WinForms;
+using System.ComponentModel;
+using System.Drawing;
+using System.Linq.Expressions;
+//using System.Windows.Forms;
 using WF = System.Windows.Forms;
 
 namespace NAPS2.EtoForms.Ui;
@@ -124,7 +125,7 @@ public class WinFormsDesktopForm : DesktopForm
 
     private WF.ListView NativeListView => ((WinFormsListView<UiImage>) _listView).NativeControl;
 
-    protected override void RecreateToolbarsAndMenus()
+    public override void RecreateToolbarsAndMenus()
     {
         base.RecreateToolbarsAndMenus();
         _toolbarFormatter.RelayoutToolbar(_mainToolStrip, EtoPlatform.Current.GetScaleFactor(this));
@@ -429,5 +430,19 @@ public class WinFormsDesktopForm : DesktopForm
             toolStrip.Parent = panel;
         }
         toolStrip.Parent!.TabStop = true;
+    }
+
+    public override void UpdateCommandVisual(ActionCommand command)
+    {
+        foreach (WF.ToolStripItem item in _mainToolStrip.Items)
+        {
+            if (item.Text?.StartsWith("Alta Calidad") == true)
+            {
+                item.Image = command.GetIconImage(
+                    IconScenario.Toolbar,
+                    EtoPlatform.Current.GetScaleFactor(this)).ToSD();
+                break;
+            }
+        }
     }
 }

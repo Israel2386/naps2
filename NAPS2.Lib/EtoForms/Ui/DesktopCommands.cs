@@ -1,3 +1,4 @@
+using Eto.Forms;
 using NAPS2.EtoForms.Desktop;
 
 namespace NAPS2.EtoForms.Ui;
@@ -133,6 +134,39 @@ public class DesktopCommands
             Text = UiStrings.Print,
             IconName = "printer"
         };
+
+        PhotocopyLight = new ActionCommand(() => desktopController.Photocopy(brightness: 280, contrast: 320))
+        {
+            Text = "Copia Clara",
+            IconName = "weather_sun"
+        };
+        PhotocopyNormal = new ActionCommand(() => desktopController.Photocopy(brightness: 150, contrast: 250))
+        {
+            Text = "Copia Normal",
+            IconName = "contrast_high"
+        };
+        PhotocopyDark = new ActionCommand(() => desktopController.Photocopy(brightness: 50, contrast: 400))
+        {
+            Text = "Copia Oscura",
+            IconName = "contrast"
+        };
+        PhotocopyHighQuality = new ActionCommand(() =>
+        {
+            desktopController.HighQualityPhotocopy = !desktopController.HighQualityPhotocopy;
+            PhotocopyHighQuality!.Text = desktopController.HighQualityPhotocopy
+                ? "Alta Calidad: SÍ"
+                : "Alta Calidad: NO";
+            PhotocopyHighQuality.IconName = desktopController.HighQualityPhotocopy
+                ? "accept"
+                : "star";
+            _desktopFormProvider.DesktopForm.UpdateCommandVisual(PhotocopyHighQuality);
+        })
+        {
+            Text = desktopController.HighQualityPhotocopy ? "Alta Calidad: SÍ" : "Alta Calidad: NO",
+            IconName = desktopController.HighQualityPhotocopy ? "accept" : "star"
+        };
+
+
         ImageMenu = new ActionCommand
         {
             Text = UiStrings.Image,
@@ -453,4 +487,9 @@ public class DesktopCommands
     public ActionCommand Undo { get; set; }
     public ActionCommand Redo { get; set; }
     public ActionCommand ToggleSidebar { get; set; }
+    public ActionCommand PhotocopyLight { get; set; }
+    public ActionCommand PhotocopyNormal { get; set; }
+    public ActionCommand PhotocopyDark { get; set; }
+    public ActionCommand PhotocopyHighQuality { get; set; }
+
 }

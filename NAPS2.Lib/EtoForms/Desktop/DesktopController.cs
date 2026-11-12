@@ -525,6 +525,61 @@ public class DesktopController
         }
     }
 
+    public bool HighQualityPhotocopy { get; set; }
+
+    public async Task Photocopy(int brightness, int contrast)
+    {
+        var targetUiImages = _imageList.Selection.Any()
+            ? _imageList.Selection.ToList()
+            : _imageList.Images.ToList();
+
+        if (!targetUiImages.Any()) return;
+
+        List<Transform> photocopyTransforms =
+        [
+            new GrayscaleTransform(),
+            new BrightnessTransform(brightness),
+            new TrueContrastTransform(contrast)
+        ];
+
+        var state = _imageList.CurrentState;
+        var clonedList = new List<ProcessedImage>();
+
+        try
+        {
+            foreach (var uiImg in targetUiImages)
+            {
+                // 1. Clonamos la imagen original intacta
+                using var baseClone = uiImg.GetClonedImage();
+
+                // 2. Aplicamos los filtros de fotocopia SOLO al clon temporal de impresión
+                var transformedClone = baseClone;
+                foreach (var transform in photocopyTransforms)
+                {
+                    var nextClone = transformedClone.WithTransform(transform);
+                    if (!ReferenceEquals(transformedClone, baseClone))
+                    {
+                        transformedClone.Dispose();
+                    }
+                    transformedClone = nextClone;
+                }
+                clonedList.Add(transformedClone);
+            }
+
+            // 3. Mandamos a imprimir los clones filtrados sin haber tocado la imagen en pantalla
+            if (await _scannedImagePrinter.PrintSilent(clonedList, HighQualityPhotocopy))
+            {
+                _imageList.MarkSaved(state, clonedList);
+            }
+        }
+        finally
+        {
+            foreach (var img in clonedList)
+            {
+                img.Dispose();
+            }
+        }
+    }
     public void Import()
     {
         if (_dialogHelper.PromptToImport(out var fileNames))

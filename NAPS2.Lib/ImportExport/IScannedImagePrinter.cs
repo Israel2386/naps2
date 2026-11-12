@@ -11,4 +11,6 @@ public interface IScannedImagePrinter
     /// <param name="selectedImages">The list of selected images. If non-empty, the user will be presented an option to print selected.</param>
     /// <returns>True if the print completed, false if there was nothing to print or the user cancelled.</returns>
     Task<bool> PromptToPrint(Window parentWindow, IList<ProcessedImage> images, IList<ProcessedImage> selectedImages);
+
+    Task<bool> PrintSilent(IList<ProcessedImage> images, bool highQuality = false);
 }

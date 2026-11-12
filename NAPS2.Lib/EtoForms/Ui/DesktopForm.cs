@@ -241,7 +241,7 @@ public abstract class DesktopForm : EtoFormBase
         RecreateToolbarsAndMenus();
     }
 
-    protected virtual void RecreateToolbarsAndMenus() => CreateToolbarsAndMenus();
+    public virtual void RecreateToolbarsAndMenus() => CreateToolbarsAndMenus();
 
     /// <summary>
     /// Updates the toolbars to reflect the current toolbar settings (buttons, position, etc.).
@@ -368,6 +368,11 @@ public abstract class DesktopForm : EtoFormBase
                 .Append(Commands.PdfSettings));
         if (PlatformCompat.System.CanPrint && ShowButton(ToolbarButtons.Print))
             CreateToolbarButton(Commands.Print);
+            CreateToolbarSeparator();
+            CreateToolbarButton(Commands.PhotocopyLight);
+            CreateToolbarButton(Commands.PhotocopyNormal);
+            CreateToolbarButton(Commands.PhotocopyDark);
+            CreateToolbarButton(Commands.PhotocopyHighQuality);
         separatorPending = true;
         if (ShowButton(ToolbarButtons.Image))
             CreateToolbarMenu(Commands.ImageMenu, new MenuProvider()
@@ -493,6 +498,8 @@ public abstract class DesktopForm : EtoFormBase
 
     protected virtual void CreateToolbarButton(Command command) => throw new InvalidOperationException();
 
+    public virtual void UpdateCommandVisual(ActionCommand command) { }
+
     protected virtual void CreateToolbarButtonWithMenu(Command command, DesktopToolbarMenuType menuType,
         MenuProvider menu) =>
         throw new InvalidOperationException();
@@ -570,7 +577,12 @@ public abstract class DesktopForm : EtoFormBase
                 Commands.Delete.Enabled = ImageList.Selection.Any();
         Commands.SavePdf.Enabled = Commands.SaveImages.Enabled = Commands.ClearAll.Enabled =
             Commands.ReorderMenu.Enabled =
-                Commands.EmailPdf.Enabled = Commands.Print.Enabled = ImageList.Images.Any();
+                Commands.EmailPdf.Enabled =
+                Commands.Print.Enabled =
+                Commands.PhotocopyLight.Enabled =
+                Commands.PhotocopyNormal.Enabled =
+                Commands.PhotocopyDark.Enabled =
+                ImageList.Images.Any();
 
         // "All" dropdown items
         Commands.SaveAllPdf.Text = Commands.SaveAllImages.Text = Commands.EmailAll.Text =
@@ -668,26 +680,35 @@ public abstract class DesktopForm : EtoFormBase
 
     private void ListViewDrop(object? sender, DropEventArgs args)
     {
-        if (args.CustomData != null)
+        if (args.FilePaths != null)
+        {
+            _desktopController.ImportFiles(args.FilePaths);
+        }
+        else if (args.CustomData != null)
         {
             var data = _imageTransfer.FromBinaryData(args.CustomData);
             if (data.ProcessId == Process.GetCurrentProcess().Id)
             {
-                var selectionList = ImageList.Selection.ToList();
-
-                // Verificamos si se arrastró exactamente 1 hoja y cayó sobre un índice válido
-                if (selectionList.Count == 1 && args.Position >= 0 && args.Position < ImageList.Images.Count)
+                // 1. Si args.Position es negativo, es la señal explícita de FUSIÓN desde WinFormsListView
+                if (args.Position < 0)
                 {
-                    var sourceItem = selectionList[0];
-                    var targetItem = ImageList.Images[args.Position];
+                    int realTargetIndex = (-args.Position) - 1;
+                    var selectionList = ImageList.Selection.ToList();
 
-                    if (!ReferenceEquals(sourceItem, targetItem))
+                    if (selectionList.Count == 1 && realTargetIndex >= 0 && realTargetIndex < ImageList.Images.Count)
                     {
-                        CombineCredential(sourceItem, targetItem);
-                        return;
+                        var sourceItem = selectionList[0];
+                        var targetItem = ImageList.Images[realTargetIndex];
+
+                        if (!ReferenceEquals(sourceItem, targetItem))
+                        {
+                            CombineCredential(sourceItem, targetItem);
+                        }
                     }
+                    return;
                 }
 
+                // 2. Si args.Position >= 0, es un reordenamiento normal entre páginas
                 DragMoveImages(args.Position);
             }
             else
@@ -695,22 +716,20 @@ public abstract class DesktopForm : EtoFormBase
                 _desktopController.ImportDirect(data, false);
             }
         }
-        else if (args.FilePaths != null)
-        {
-            _desktopController.ImportFiles(args.FilePaths);
-        }
+        //else 
     }
 
     private void CombineCredential(UiImage sourceUi, UiImage targetUi)
     {
+        int sourceIndex = ImageList.Images.IndexOf(sourceUi);
+        int targetIndex = ImageList.Images.IndexOf(targetUi);
+
         using var sourceProcessed = sourceUi.GetClonedImage();
         using var targetProcessed = targetUi.GetClonedImage();
 
         using var sourceMem = sourceProcessed.ImageContext.Render(sourceProcessed);
         using var targetMem = targetProcessed.ImageContext.Render(targetProcessed);
 
-        // targetMem es la base (fondo) y sourceMem es la que se superpone (primer plano)
-        // Los píxeles no blancos de sourceMem sobrescribirán a los de targetMem
         using var combinedMem = CredentialMerger.Merge(baseImage: targetMem, overlayImage: sourceMem, whiteThreshold: 220);
 
         if (targetProcessed.Storage is not ImageFileStorage targetStorage)
@@ -721,7 +740,8 @@ public abstract class DesktopForm : EtoFormBase
         string originalDir = Path.GetDirectoryName(targetStorage.FullPath)!;
         string newFilePath = Path.Combine(originalDir, $"{Guid.NewGuid():N}.png");
 
-        using (var fileStream = new FileStream(newFilePath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+        // Guardar y liberar el stream completamente
+        using (var fileStream = new FileStream(newFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
         {
             combinedMem.Save(fileStream, ImageFileFormat.Png);
             fileStream.Flush(true);
@@ -729,6 +749,7 @@ public abstract class DesktopForm : EtoFormBase
 
         var fileStorage = new ImageFileStorage(newFilePath);
 
+        // Usamos el ImageContext del bitmap generado y los Metadata de la hoja base existente
         var newProcessed = new ProcessedImage(
             combinedMem.ImageContext,
             fileStorage,
@@ -740,8 +761,14 @@ public abstract class DesktopForm : EtoFormBase
 
         var combinedUi = new UiImage(newProcessed, useThumbnail: false);
 
-        // Reemplaza targetUi y sourceUi por la combinada
-        ImageList.Mutate(new ImageListMutation.MergeCredential(sourceUi, targetUi, combinedUi), ImageList.Selection);
+        ImageList.Mutate(
+            new ImageListMutation.MergeCredential(sourceUi, targetUi, combinedUi),
+            ImageList.Selection,
+            updateUndoStack: false,
+            disposeDeleted: false
+        );
+
+        ImageList.PushUndoElement(new MergeCredentialUndoElement(ImageList, sourceUi, sourceIndex, targetUi, targetIndex, combinedUi));
     }
 
     private void DragMoveImages(int position)
