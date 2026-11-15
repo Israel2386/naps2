@@ -373,7 +373,8 @@ public abstract class DesktopForm : EtoFormBase
             CreateToolbarButton(Commands.PhotocopyNormal);
             CreateToolbarButton(Commands.PhotocopyDark);
             CreateToolbarButton(Commands.PhotocopyHighQuality);
-        separatorPending = true;
+            CreateToolbarButton(Commands.SplitWithWhitePadding);
+    separatorPending = true;
         if (ShowButton(ToolbarButtons.Image))
             CreateToolbarMenu(Commands.ImageMenu, new MenuProvider()
                 .Append(Commands.ViewImage)
@@ -582,6 +583,7 @@ public abstract class DesktopForm : EtoFormBase
                 Commands.PhotocopyLight.Enabled =
                 Commands.PhotocopyNormal.Enabled =
                 Commands.PhotocopyDark.Enabled =
+                Commands.SplitWithWhitePadding.Enabled =
                 ImageList.Images.Any();
 
         // "All" dropdown items
@@ -788,4 +790,5 @@ public abstract class DesktopForm : EtoFormBase
         _sidebar.ToggleVisibility();
     }
 
+    
 }

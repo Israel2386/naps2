@@ -1,7 +1,8 @@
+using NAPS2.Images.Gdi;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Drawing.Printing;
 using System.Windows.Forms;
-using NAPS2.Images.Gdi;
 
 namespace NAPS2.ImportExport;
 
@@ -142,6 +143,36 @@ public class PrintDocumentPrinter : IScannedImagePrinter
             }
         }
 
-        return await Print(settings, images, images);
+        var tempItems = await Task.Run(() =>
+        {
+            var list = new List<(ProcessedImage Image, string TempPath)>(images.Count);
+            foreach (var img in images)
+            {
+                var cleanImg = CredentialMerger.CreateCleanTempCredentialImage(img, out string tempPath);
+                list.Add((cleanImg, tempPath));
+            }
+            return list;
+        });
+
+        var preparedImages = tempItems.Select(x => x.Image).ToList();
+
+        try
+        {
+            return await Print(settings, preparedImages, preparedImages);
+        }
+        finally
+        {
+            foreach (var item in tempItems)
+            {
+                item.Image.Dispose();
+                if (File.Exists(item.TempPath))
+                {
+                    try { File.Delete(item.TempPath); } catch { }
+                }
+            }
+        }
     }
+
+
+    
 }

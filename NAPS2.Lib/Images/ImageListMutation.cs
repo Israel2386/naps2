@@ -119,4 +119,35 @@ public abstract class ImageListMutation : ListMutation<UiImage>
             selection = ListSelection.From([combined]);
         }
     }
+
+    public class SplitWithWhitePadding(List<UiImage> toRemove, List<UiImage> toInsert, int insertIndex) : ImageListMutation
+    {
+        public override void Apply(List<UiImage> images, ref ListSelection<UiImage> selection)
+        {
+            foreach (var img in toRemove)
+            {
+                images.Remove(img);
+            }
+            int idx = Math.Clamp(insertIndex, 0, images.Count);
+            images.InsertRange(idx, toInsert);
+            selection = ListSelection.From(toInsert);
+        }
+    }
+
+    public class UndoSplitWithWhitePadding(List<(UiImage Original, int Index)> originals, List<UiImage> generatedSlices) : ImageListMutation
+    {
+        public override void Apply(List<UiImage> images, ref ListSelection<UiImage> selection)
+        {
+            foreach (var img in generatedSlices)
+            {
+                images.Remove(img);
+            }
+            foreach (var item in originals.OrderBy(x => x.Index))
+            {
+                int idx = Math.Clamp(item.Index, 0, images.Count);
+                images.Insert(idx, item.Original);
+            }
+            selection = ListSelection.From(originals.Select(x => x.Original));
+        }
+    }
 }

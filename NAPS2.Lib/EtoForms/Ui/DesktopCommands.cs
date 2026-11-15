@@ -1,4 +1,5 @@
 using Eto.Forms;
+using NAPS2.Images;
 using NAPS2.EtoForms.Desktop;
 
 namespace NAPS2.EtoForms.Ui;
@@ -135,17 +136,17 @@ public class DesktopCommands
             IconName = "printer"
         };
 
-        PhotocopyLight = new ActionCommand(() => desktopController.Photocopy(brightness: 280, contrast: 320))
+        PhotocopyLight = new ActionCommand(() => desktopController.Photocopy(brightness: 120, contrast: 120))
         {
             Text = "Copia Clara",
             IconName = "weather_sun"
         };
-        PhotocopyNormal = new ActionCommand(() => desktopController.Photocopy(brightness: 150, contrast: 250))
+        PhotocopyNormal = new ActionCommand(() => desktopController.Photocopy(brightness: 75, contrast: 150))
         {
             Text = "Copia Normal",
             IconName = "contrast_high"
         };
-        PhotocopyDark = new ActionCommand(() => desktopController.Photocopy(brightness: 50, contrast: 400))
+        PhotocopyDark = new ActionCommand(() => desktopController.Photocopy(brightness: 50, contrast: 190))
         {
             Text = "Copia Oscura",
             IconName = "contrast"
@@ -166,6 +167,11 @@ public class DesktopCommands
             IconName = desktopController.HighQualityPhotocopy ? "accept" : "star"
         };
 
+        SplitWithWhitePadding = new ActionCommand(SplitSelectedWithWhitePadding)
+        {
+            Text = "Partir Mitades + Blanco",
+            IconName = "split"
+        };
 
         ImageMenu = new ActionCommand
         {
@@ -491,5 +497,109 @@ public class DesktopCommands
     public ActionCommand PhotocopyNormal { get; set; }
     public ActionCommand PhotocopyDark { get; set; }
     public ActionCommand PhotocopyHighQuality { get; set; }
+    public ActionCommand SplitWithWhitePadding { get; set; }
 
+    public void TestCredentialBoundsVisual()
+    {
+        var selectedUi = _imageList.Selection.FirstOrDefault();
+        if (selectedUi == null) return;
+
+        using var processed = selectedUi.GetClonedImage();
+        if (processed.Storage is not ImageFileStorage storage) return;
+
+        using var mem = processed.ImageContext.Render(processed);
+        using var debugMem = CredentialMerger.CreateDebugBoundsImage(mem);
+
+        string dir = Path.GetDirectoryName(storage.FullPath)!;
+        string debugPath = Path.Combine(dir, $"debug_bounds_{Guid.NewGuid():N}.png");
+
+        using (var fs = new FileStream(debugPath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+        {
+            debugMem.Save(fs, ImageFileFormat.Png);
+            fs.Flush(true);
+        }
+
+        var fileStorage = new ImageFileStorage(debugPath);
+        var debugProcessed = new ProcessedImage(
+            debugMem.ImageContext,
+            fileStorage,
+            processed.Metadata,
+            new PostProcessingData(),
+            TransformState.Empty,
+            new RefCount(fileStorage)
+        );
+
+        _imageList.Mutate(new ImageListMutation.Append(new UiImage(debugProcessed, useThumbnail: false)), _imageList.Selection);
+    }
+
+    public void SplitSelectedWithWhitePadding()
+    {
+        var selected = _imageList.Selection.ToList();
+        if (!selected.Any()) return;
+
+        // Ordenar por posición en la lista para respetar el orden 1, 2...
+        var orderedOriginals = selected
+            .Select(img => (Original: img, Index: _imageList.Images.IndexOf(img)))
+            .Where(x => x.Index >= 0)
+            .OrderBy(x => x.Index)
+            .ToList();
+
+        if (!orderedOriginals.Any()) return;
+
+        var resultingUiImages = new List<UiImage>(orderedOriginals.Count * 2);
+        string? fallbackDir = null;
+
+        foreach (var item in orderedOriginals)
+        {
+            using var processed = item.Original.GetClonedImage();
+            string dir = (processed.Storage as ImageFileStorage)?.FullPath is string fullPath
+                ? Path.GetDirectoryName(fullPath)!
+                : (fallbackDir ?? Path.GetTempPath());
+            fallbackDir = dir;
+
+            using var rendered = processed.ImageContext.Render(processed);
+            var (leftMem, rightMem) = CredentialMerger.SplitVerticalWithWhitePadding(rendered);
+
+            using (leftMem)
+            using (rightMem)
+            {
+                resultingUiImages.Add(SaveToNewUiImage(leftMem, processed, dir));
+                resultingUiImages.Add(SaveToNewUiImage(rightMem, processed, dir));
+            }
+        }
+
+        int insertIndex = orderedOriginals[0].Index;
+
+        _imageList.Mutate(
+            new ImageListMutation.SplitWithWhitePadding(
+                orderedOriginals.Select(x => x.Original).ToList(),
+                resultingUiImages,
+                insertIndex),
+            _imageList.Selection,
+            updateUndoStack: false,
+            disposeDeleted: false);
+
+        _imageList.PushUndoElement(new SplitWithWhitePaddingUndoElement(_imageList, orderedOriginals, resultingUiImages));
+    }
+
+    private static UiImage SaveToNewUiImage(IMemoryImage memImg, ProcessedImage template, string dir)
+    {
+        string outPath = Path.Combine(dir, $"split_pad_{Guid.NewGuid():N}.png");
+        using (var fs = new FileStream(outPath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+        {
+            memImg.Save(fs, ImageFileFormat.Png);
+            fs.Flush(true);
+        }
+
+        var fileStorage = new ImageFileStorage(outPath);
+        var processed = new ProcessedImage(
+            memImg.ImageContext,
+            fileStorage,
+            template.Metadata,
+            new PostProcessingData(),
+            TransformState.Empty,
+            new RefCount(fileStorage)
+        );
+        return new UiImage(processed, useThumbnail: false);
+    }
 }
