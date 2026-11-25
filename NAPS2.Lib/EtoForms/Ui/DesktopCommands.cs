@@ -135,7 +135,23 @@ public class DesktopCommands
             Text = UiStrings.Print,
             IconName = "printer"
         };
-
+        //Seccion de comandos para fotocopiado con diferentes configuraciones de brillo y contraste, tanto en color como en blanco y negro.
+        PhotocopyColorNormal = new ActionCommand(() => desktopController.Photocopy(brightness: 120, contrast: 120, grayscale: false))
+        {
+            Text = "Copia Color Clara",
+            IconName = "printer"
+        };
+        PhotocopyColorLight = new ActionCommand(() => desktopController.Photocopy(brightness: 75, contrast: 150, grayscale: false))
+        {
+            Text = "Copia Color Normal",
+            IconName = "printer"
+        };
+        PhotocopyColorDark = new ActionCommand(() => desktopController.Photocopy(brightness: 50, contrast: 190, grayscale: false))
+        {
+            Text = "Copia Color Oscura",
+            IconName = "printer"
+        };
+        //seccion de botones de copia a blanco y negro
         PhotocopyLight = new ActionCommand(() => desktopController.Photocopy(brightness: 120, contrast: 120))
         {
             Text = "Copia Clara",
@@ -498,6 +514,10 @@ public class DesktopCommands
     public ActionCommand PhotocopyDark { get; set; }
     public ActionCommand PhotocopyHighQuality { get; set; }
     public ActionCommand SplitWithWhitePadding { get; set; }
+
+    public ActionCommand PhotocopyColorNormal { get; }
+    public ActionCommand PhotocopyColorLight { get; }
+    public ActionCommand PhotocopyColorDark { get; }
 
     public void TestCredentialBoundsVisual()
     {

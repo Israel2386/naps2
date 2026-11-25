@@ -120,6 +120,10 @@ public abstract class DesktopForm : EtoFormBase
         EtoPlatform.Current.AttachDpiDependency(this, scale => _thumbnailController.Oversample = scale);
         ImageList.SelectionChanged += ImageList_SelectionChanged;
         ImageList.ImagesUpdated += ImageList_ImagesUpdated;
+        NAPS2.Images.UiImage.ContentOffsetCommitted += (img, oldOffset, newOffset) =>
+        {
+            ImageList.RecordContentOffsetUndo(img, oldOffset, newOffset);
+        };
         ImageList.ImagesThumbnailInvalidated += ImageList_ImagesThumbnailInvalidated;
         _profileManager.ProfilesUpdated += ProfileManager_ProfilesUpdated;
         _editWithController.AppChanged += EditWithController_AppChanged;
@@ -359,16 +363,19 @@ public abstract class DesktopForm : EtoFormBase
                 .Append(Commands.SaveSelectedImages)
                 .Separator()
                 .Append(Commands.ImageSettings));
-        if (PlatformCompat.System.CanEmail && ShowButton(ToolbarButtons.EmailPdf))
-            CreateToolbarButtonWithMenu(Commands.EmailPdf, DesktopToolbarMenuType.EmailPdf, new MenuProvider()
-                .Append(Commands.EmailAll)
-                .Append(Commands.EmailSelected)
-                .Separator()
-                .Append(Commands.EmailSettings)
-                .Append(Commands.PdfSettings));
+        //if (PlatformCompat.System.CanEmail && ShowButton(ToolbarButtons.EmailPdf))
+            //CreateToolbarButtonWithMenu(Commands.EmailPdf, DesktopToolbarMenuType.EmailPdf, new MenuProvider()
+                //.Append(Commands.EmailAll)
+                //.Append(Commands.EmailSelected)
+                //.Separator()
+                //.Append(Commands.EmailSettings)
+                //.Append(Commands.PdfSettings));
         if (PlatformCompat.System.CanPrint && ShowButton(ToolbarButtons.Print))
             CreateToolbarButton(Commands.Print);
             CreateToolbarSeparator();
+            CreateToolbarButton(Commands.PhotocopyColorLight);
+            CreateToolbarButton(Commands.PhotocopyColorNormal);
+            CreateToolbarButton(Commands.PhotocopyColorDark);
             CreateToolbarButton(Commands.PhotocopyLight);
             CreateToolbarButton(Commands.PhotocopyNormal);
             CreateToolbarButton(Commands.PhotocopyDark);
@@ -584,6 +591,10 @@ public abstract class DesktopForm : EtoFormBase
                 Commands.PhotocopyNormal.Enabled =
                 Commands.PhotocopyDark.Enabled =
                 Commands.SplitWithWhitePadding.Enabled =
+                Commands.PhotocopyColorLight.Enabled =
+                Commands.PhotocopyColorNormal.Enabled =
+                Commands.PhotocopyColorDark.Enabled =
+
                 ImageList.Images.Any();
 
         // "All" dropdown items

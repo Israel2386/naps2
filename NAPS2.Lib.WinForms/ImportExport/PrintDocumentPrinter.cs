@@ -1,26 +1,34 @@
+using Eto.Forms;
 using NAPS2.Images.Gdi;
+using PdfSharpCore.Drawing;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Printing;
 using System.Windows.Forms;
+using DialogResult = System.Windows.Forms.DialogResult;
+using PrintDialog = System.Windows.Forms.PrintDialog;
+using PrintDocument = System.Drawing.Printing.PrintDocument;
 
 namespace NAPS2.ImportExport;
 
 public class PrintDocumentPrinter : IScannedImagePrinter
 {
     public async Task<bool> PromptToPrint(
-        Eto.Forms.Window parentWindow, IList<ProcessedImage> images, IList<ProcessedImage> selectedImages)
+        Window parentWindow,
+        IList<ProcessedImage> images,
+        IList<ProcessedImage> selectedImages,
+        IList<System.Drawing.RectangleF?>? allCropRegions = null,
+        IList<System.Drawing.RectangleF?>? selectedCropRegions = null)
     {
         if (!images.Any())
         {
             return false;
         }
+
         var printDialog = new PrintDialog
         {
-            // TODO: If we migrate this to WPF we might be able to enable print previews
-            // WinForms has UseEXDialog which will use the modern windows dialog but has no way to populate the preview
-            AllowSelection = selectedImages.Any(),
             AllowSomePages = true,
+            AllowSelection = selectedImages.Any(),
             PrinterSettings =
             {
                 MinimumPage = 1,
@@ -29,84 +37,132 @@ public class PrintDocumentPrinter : IScannedImagePrinter
                 ToPage = images.Count
             }
         };
-        if (printDialog.ShowDialog() == DialogResult.OK)
+
+        if (printDialog.ShowDialog(parentWindow.ToNative()) == DialogResult.OK)
         {
-            return await Print(printDialog.PrinterSettings, images, selectedImages);
+            return await Print(
+                printDialog.PrinterSettings,
+                images,
+                selectedImages,
+                allCropRegions,
+                selectedCropRegions);
         }
         return false;
     }
 
-    public async Task<bool> Print(PrinterSettings printerSettings, IList<ProcessedImage> images,
-        IList<ProcessedImage> selectedImages)
+    public async Task<bool> Print(
+         PrinterSettings printerSettings,
+         IList<ProcessedImage> images,
+         IList<ProcessedImage> selectedImages,
+         IList<System.Drawing.RectangleF?>? allCropRegions = null,
+         IList<System.Drawing.RectangleF?>? selectedCropRegions = null)
     {
-        IList<ProcessedImage> imagesToPrint;
-        switch (printerSettings.PrintRange)
-        {
-            case PrintRange.AllPages:
-                imagesToPrint = images;
-                break;
-            case PrintRange.Selection:
-                imagesToPrint = selectedImages;
-                break;
-            case PrintRange.SomePages:
-                int start = printerSettings.FromPage - 1;
-                int length = printerSettings.ToPage - start;
-                imagesToPrint = images.Skip(start).Take(length).ToList();
-                break;
-            default:
-                imagesToPrint = [];
-                break;
-        }
-        if (imagesToPrint.Count == 0)
-        {
-            return false;
-        }
+        var tempPaths = new List<string>();
+        var disposables = new List<ProcessedImage>();
 
-        return await Task.Run(() =>
+        try
         {
-            var printDocument = new PrintDocument();
-            int i = 0;
-            printDocument.PrintPage += (sender, e) =>
+            var preparedAll = ApplyCropRegions(images, allCropRegions, tempPaths, disposables);
+            var preparedSelected = ApplyCropRegions(selectedImages, selectedCropRegions, tempPaths, disposables);
+
+            IList<ProcessedImage> imagesToPrint;
+
+            switch (printerSettings.PrintRange)
             {
-                var image = imagesToPrint[i].Render();
-                try
+                case PrintRange.AllPages:
+                    imagesToPrint = preparedAll;
+                    break;
+                case PrintRange.Selection:
+                    imagesToPrint = preparedSelected;
+                    break;
+                case PrintRange.SomePages:
+                    int start = printerSettings.FromPage - 1;
+                    int length = printerSettings.ToPage - start;
+                    imagesToPrint = preparedAll.Skip(start).Take(length).ToList();
+                    break;
+                default:
+                    imagesToPrint = [];
+                    break;
+            }
+            if (imagesToPrint.Count == 0)
+            {
+                return false;
+            }
+
+            return await Task.Run(() =>
+            {
+                var printDocument = new PrintDocument();
+                int i = 0;
+                printDocument.PrintPage += (sender, e) =>
                 {
-                    var pb = e.PageBounds;
-                    if (Math.Sign(image.Width - image.Height) != Math.Sign(pb.Width - pb.Height))
+                    var image = imagesToPrint[i].Render();
+                    try
                     {
-                        // Flip portrait/landscape to match output
-                        image = image.PerformTransform(new RotationTransform(90));
+                        var pb = e.PageBounds;
+                        if (Math.Sign(image.Width - image.Height) != Math.Sign(pb.Width - pb.Height))
+                        {
+                            // Flip portrait/landscape to match output
+                            image = image.PerformTransform(new RotationTransform(90));
+                        }
+
+                        // Escalar manteniendo la relación de aspecto dentro de la hoja completa
+                        int drawW, drawH;
+                        if (image.Width / (double)pb.Width < image.Height / (double)pb.Height)
+                        {
+                            drawH = pb.Height;
+                            drawW = (int)Math.Round(image.Width * (pb.Height / (double)image.Height));
+                        }
+                        else
+                        {
+                            drawW = pb.Width;
+                            drawH = (int)Math.Round(image.Height * (pb.Width / (double)image.Width));
+                        }
+
+                        // Centrar en la hoja física y compensar el margen físico no imprimible de la impresora
+                        float hardMarginX = e.PageSettings.HardMarginX;
+                        float hardMarginY = e.PageSettings.HardMarginY;
+
+                        float drawX = pb.Left + (pb.Width - drawW) / 2f - hardMarginX;
+                        float drawY = pb.Top + (pb.Height - drawH) / 2f - hardMarginY;
+
+                        e.Graphics!.DrawImage(image.AsBitmap(), drawX, drawY, drawW, drawH);
+                    }
+                    finally
+                    {
+                        image.Dispose();
                     }
 
-                    // Fit the image into the output rect while maintaining its aspect ratio
-                    var rect = image.Width / pb.Width < image.Height / pb.Height
-                        ? new Rectangle(pb.Left, pb.Top, image.Width * pb.Height / image.Height, pb.Height)
-                        : new Rectangle(pb.Left, pb.Top, pb.Width, image.Height * pb.Width / image.Width);
+                    e.HasMorePages = (++i < imagesToPrint.Count);
+                };
+                printDocument.PrinterSettings = printerSettings;
+                printDocument.Print();
 
-                    e.Graphics!.DrawImage(image.AsBitmap(), rect);
-                }
-                finally
+                Log.Event(EventType.Print, new EventParams
                 {
-                    image.Dispose();
-                }
+                    Name = MiscResources.Print,
+                    Pages = images.Count,
+                    DeviceName = printDocument.PrinterSettings.PrinterName
+                });
 
-                e.HasMorePages = (++i < imagesToPrint.Count);
-            };
-            printDocument.PrinterSettings = printerSettings;
-            printDocument.Print();
-
-            Log.Event(EventType.Print, new EventParams
-            {
-                Name = MiscResources.Print,
-                Pages = images.Count,
-                DeviceName = printDocument.PrinterSettings.PrinterName
+                return true;
             });
-
-            return true;
-        });
+        }
+        finally
+        {
+            foreach (var img in disposables)
+            {
+                img.Dispose();
+            }
+            foreach (var path in tempPaths)
+            {
+                try { if (File.Exists(path)) File.Delete(path); } catch { }
+            }
+        }
     }
-
-    public async Task<bool> PrintSilent(IList<ProcessedImage> images, bool highQuality = false)
+    public async Task<bool> PrintSilent(
+    IList<ProcessedImage> images,
+    bool highQuality = false,
+    IList<System.Drawing.RectangleF?>? cropRegions = null)
     {
         if (!images.Any())
         {
@@ -146,9 +202,12 @@ public class PrintDocumentPrinter : IScannedImagePrinter
         var tempItems = await Task.Run(() =>
         {
             var list = new List<(ProcessedImage Image, string TempPath)>(images.Count);
-            foreach (var img in images)
+            for (int i = 0; i < images.Count; i++)
             {
-                var cleanImg = CredentialMerger.CreateCleanTempCredentialImage(img, out string tempPath);
+                var rawRegion = (cropRegions != null && i < cropRegions.Count) ? cropRegions[i] : null;
+                var effectiveRegion = CredentialMerger.IsFullPageRegion(rawRegion) ? null : rawRegion;
+
+                var cleanImg = CredentialMerger.CreateCleanTempCredentialImage(images[i], out string tempPath, effectiveRegion);
                 list.Add((cleanImg, tempPath));
             }
             return list;
@@ -174,5 +233,31 @@ public class PrintDocumentPrinter : IScannedImagePrinter
     }
 
 
-    
+    private static IList<ProcessedImage> ApplyCropRegions(
+        IList<ProcessedImage> sourceImages,
+        IList<System.Drawing.RectangleF?>? cropRegions,
+        List<string> tempPaths,
+        List<ProcessedImage> disposables)
+    {
+        if (cropRegions == null) return sourceImages;
+
+        var result = new List<ProcessedImage>(sourceImages.Count);
+        for (int i = 0; i < sourceImages.Count; i++)
+        {
+            var region = i < cropRegions.Count ? cropRegions[i] : null;
+            if (!CredentialMerger.IsFullPageRegion(region))
+            {
+                var masked = CredentialMerger.CreateMaskedPageTempImage(sourceImages[i], region!.Value, out var path);
+                tempPaths.Add(path);
+                disposables.Add(masked);
+                result.Add(masked);
+            }
+            else
+            {
+                result.Add(sourceImages[i]);
+            }
+        }
+        return result;
+    }
+
 }

@@ -16,6 +16,58 @@ public class DragScrollListView : ListView
     const int SB_LINEUP = 0; // Scrolls one line up
     const int SB_LINEDOWN = 1; // Scrolls one line down
 
+    public Func<Point, bool>? HandleCustomMouseDown;
+    public Func<Point, bool>? HandleCustomMouseMove;
+    public Func<Point, bool>? HandleCustomMouseUp;
+
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONUP = 0x0202;
+    private const int WM_MOUSEMOVE = 0x0200;
+    private const int WM_SETCURSOR = 0x0020;
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_SETCURSOR && (m.LParam.ToInt64() & 0xFFFF) == 1) // 1 = HTCLIENT
+        {
+            Cursor.Current = this.Cursor;
+            m.Result = (IntPtr)1;
+            return;
+        }
+        else if (m.Msg == WM_LBUTTONDOWN && HandleCustomMouseDown != null)
+        {
+            var pt = GetPointFromLParam(m.LParam);
+            if (HandleCustomMouseDown(pt))
+            {
+                Focus();
+                return; // Bloquea el lazo de selección y el ItemDrag nativo de Windows
+            }
+        }
+        else if (m.Msg == WM_MOUSEMOVE && HandleCustomMouseMove != null)
+        {
+            var pt = GetPointFromLParam(m.LParam);
+            if (HandleCustomMouseMove(pt))
+            {
+                return;
+            }
+        }
+        else if (m.Msg == WM_LBUTTONUP && HandleCustomMouseUp != null)
+        {
+            var pt = GetPointFromLParam(m.LParam);
+            if (HandleCustomMouseUp(pt))
+            {
+                return;
+            }
+        }
+
+        base.WndProc(ref m);
+    }
+
+    private static Point GetPointFromLParam(IntPtr lParam)
+    {
+        int x = (short)(lParam.ToInt64() & 0xFFFF);
+        int y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+        return new Point(x, y);
+    }
     public DragScrollListView()
     {
         components = new System.ComponentModel.Container();

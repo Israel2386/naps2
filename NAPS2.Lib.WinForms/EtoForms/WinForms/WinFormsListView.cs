@@ -1,16 +1,20 @@
-using System.Drawing;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using Eto.WinForms;
 using Eto.WinForms.Forms.Menu;
 using NAPS2.EtoForms.Widgets;
 using NAPS2.WinForms;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using System.Windows.Media.Media3D;
 using ContextMenu = Eto.Forms.ContextMenu;
 
 namespace NAPS2.EtoForms.WinForms;
 
+
 public class WinFormsListView<T> : IListView<T> where T : notnull
 {
+    private static bool IsSKeyPressed() => NativeKeyHelper.IsSKeyPressed();
+    private PointF _dragStartOffset;
     private Pen DefaultPen => new(_behavior.ColorScheme.ForegroundColor.ToSD(), 1);
     private static readonly Pen BasicSelectionPen = new(Color.FromArgb(0x60, 0xa0, 0xe8), 3);
     private const int PageNumberTextPadding = 6;
@@ -29,6 +33,25 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
     private ContextMenu? _contextMenu;
     private float _dpiScale = 1f;
     private Eto.Drawing.Size _imageSize = new(48, 48);
+
+    private enum CropEdge
+    {
+        None,
+        Top, Bottom, Left, Right,
+        TopLeft, TopRight, BottomLeft, BottomRight,
+        Move,
+        PanContent
+    }
+
+    //private PointF _dragStartOffset;
+    private CropEdge _activeResizeEdge = CropEdge.None;
+    private ListViewItem? _resizingItem;
+    private Point _dragStartMouse;
+    private RectangleF _dragStartCrop;
+
+    private static readonly Pen CropBorderPen = new(Color.FromArgb(220, 229, 57, 53), 2f);
+    private static readonly SolidBrush CropHandleBrush = new(Color.FromArgb(229, 57, 53));
+    private static readonly SolidBrush CropOutsideShadeBrush = new(Color.FromArgb(45, 0, 0, 0));
 
     public WinFormsListView(ListViewBehavior<T> behavior)
     {
@@ -64,6 +87,24 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
         _view.DragOver += OnDragOver;
         _view.DragLeave += OnDragLeave;
         _view.MouseMove += OnMouseMove;
+        //_view.MouseDown += OnMouseDown;
+        //_view.MouseUp += OnMouseUp;
+        _view.KeyPress += (sender, e) =>
+        {
+            if (IsSKeyPressed() || char.ToUpperInvariant(e.KeyChar) == 'S')
+            {
+                e.Handled = true; // Evita el pitido de búsqueda incremental del ListView
+            }
+        };
+
+        NAPS2.Images.UiImage.ContentOffsetChanged += OnContentOffsetChanged;
+
+        if (_view is DragScrollListView customListView)
+        {
+            customListView.HandleCustomMouseDown = HandleCropMouseDown;
+            customListView.HandleCustomMouseMove = HandleCropMouseMove;
+            customListView.HandleCustomMouseUp = HandleCropMouseUp;
+        }
         _view.MouseLeave += OnMouseLeave;
 
         _viewEtoControl = Eto.Forms.WinFormsHelpers.ToEto(_view);
@@ -136,7 +177,9 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
             }
 
             // Draw image
-            e.Graphics.DrawImage(image, new Rectangle(x, y, width, height));
+            DrawThumbnailWithOffset(e.Graphics, e.Item, image, new Rectangle(x, y, width, height));
+
+
 
             // Draw the text below the image
             var drawBrush = new SolidBrush(_behavior.ColorScheme.ForegroundColor.ToSD());
@@ -153,6 +196,8 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
             {
                 e.Graphics.DrawRectangle(DefaultPen, x - 1, y - 1, width + 1, height + 1);
             }
+
+            DrawPrintCropOverlay(e.Graphics, e.Item, new Rectangle(x, y, width, height));
         }
         else
         {
@@ -172,18 +217,20 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
             var y = e.Bounds.Top + (e.Bounds.Height - height) / 2;
 
             // Draw image
-            e.Graphics.DrawImage(image, new Rectangle(x, y, width, height));
+            DrawThumbnailWithOffset(e.Graphics, e.Item, image, new Rectangle(x, y, width, height));
 
             // Draw border
             if (e.Item.Selected)
             {
-                e.Graphics.DrawRectangle(BasicSelectionPen, x - 2, y - 2, width + 3, height + 3);
+                e.Graphics.DrawRectangle(BasicSelectionPen, x - 6, y - 6, width + 10, height + 10);
             }
             else
             {
                 e.Graphics.DrawRectangle(DefaultPen, x, y, width, height);
             }
+            DrawPrintCropOverlay(e.Graphics, e.Item, new Rectangle(x, y, width, height));
         }
+        
     }
 
     public Eto.Drawing.Size ImageSize
@@ -416,6 +463,11 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
 
     private void OnItemDrag(object? sender, ItemDragEventArgs e)
     {
+        if (_activeResizeEdge != CropEdge.None)
+        {
+            return;
+        }
+
         if (!_behavior.AllowDragDrop)
         {
             return;
@@ -606,5 +658,356 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
         {
             _view.Cursor = Cursors.Default;
         }
+    }
+
+    private Rectangle GetItemImageRect(ListViewItem item)
+    {
+        var image = ImageList.Get(item);
+        int imageSizeW = (int)Math.Round(_imageSize.Width * _dpiScale);
+        int imageSizeH = (int)Math.Round(_imageSize.Height * _dpiScale);
+
+        if (_behavior.ShowPageNumbers)
+        {
+            int tp = (int)Math.Round(PageNumberTextPadding * _dpiScale);
+            string label = $"{item.Index + 1} / {_view.Items.Count}";
+            SizeF textSize = TextRenderer.MeasureText(label, _view.Font);
+            int textOffset = (int)(textSize.Height + tp);
+
+            float scaleHeight = (float)(imageSizeH - textOffset) / image.Height;
+            float scaleWidth = (float)imageSizeW / image.Width;
+            float scale = Math.Min(scaleWidth, scaleHeight);
+
+            int height = (int)Math.Round(image.Height * scale);
+            int width = (int)Math.Round(image.Width * scale);
+            int x = item.Bounds.Left + (item.Bounds.Width - width) / 2;
+            int y = item.Bounds.Top + (item.Bounds.Height - height - textOffset) / 2;
+            return new Rectangle(x, y, width, height);
+        }
+        else
+        {
+            int width, height;
+            if (image.Width > image.Height)
+            {
+                width = imageSizeW;
+                height = (int)Math.Round(width * (image.Height / (double)image.Width));
+            }
+            else
+            {
+                height = imageSizeH;
+                width = (int)Math.Round(height * (image.Width / (double)image.Height));
+            }
+            int x = item.Bounds.Left + (item.Bounds.Width - width) / 2;
+            int y = item.Bounds.Top + (item.Bounds.Height - height) / 2;
+            return new Rectangle(x, y, width, height);
+        }
+    }
+
+    private static RectangleF GetEffectiveNormalizedCrop(NAPS2.Images.UiImage uiImg)
+    {
+        return uiImg.PrintCropRegion ?? new RectangleF(0f, 0f, 1f, 1f);
+    }
+
+    private Rectangle GetCropScreenRect(Rectangle imgRect, RectangleF normCrop)
+    {
+        int cx = imgRect.X + (int)Math.Round(normCrop.X * imgRect.Width);
+        int cy = imgRect.Y + (int)Math.Round(normCrop.Y * imgRect.Height);
+        int cw = Math.Max(8, (int)Math.Round(normCrop.Width * imgRect.Width));
+        int ch = Math.Max(8, (int)Math.Round(normCrop.Height * imgRect.Height));
+        return new Rectangle(cx, cy, cw, ch);
+    }
+
+    private void DrawPrintCropOverlay(Graphics g, ListViewItem item, Rectangle imgRect)
+    {
+        if (item.Tag is not NAPS2.Images.UiImage uiImg) return;
+
+        var norm = GetEffectiveNormalizedCrop(uiImg);
+        var cropRect = GetCropScreenRect(imgRect, norm);
+
+        // Sombra fuera del área ganadora
+        g.FillRectangle(CropOutsideShadeBrush, imgRect.X, imgRect.Y, imgRect.Width, Math.Max(0, cropRect.Top - imgRect.Y));
+        g.FillRectangle(CropOutsideShadeBrush, imgRect.X, cropRect.Bottom, imgRect.Width, Math.Max(0, imgRect.Bottom - cropRect.Bottom));
+        g.FillRectangle(CropOutsideShadeBrush, imgRect.X, cropRect.Top, Math.Max(0, cropRect.Left - imgRect.X), cropRect.Height);
+        g.FillRectangle(CropOutsideShadeBrush, cropRect.Right, cropRect.Top, Math.Max(0, imgRect.Right - cropRect.Right), cropRect.Height);
+
+        // Borde rojo
+        g.DrawRectangle(CropBorderPen, cropRect);
+
+        // 8 manijas (4 bordes + 4 esquinas)
+        int hs = 6;
+        int half = hs / 2;
+        int midX = cropRect.Left + cropRect.Width / 2;
+        int midY = cropRect.Top + cropRect.Height / 2;
+
+        // Lados
+        g.FillRectangle(CropHandleBrush, midX - half, cropRect.Top - half, hs, hs);
+        g.FillRectangle(CropHandleBrush, midX - half, cropRect.Bottom - half, hs, hs);
+        g.FillRectangle(CropHandleBrush, cropRect.Left - half, midY - half, hs, hs);
+        g.FillRectangle(CropHandleBrush, cropRect.Right - half, midY - half, hs, hs);
+
+        // Esquinas
+        g.FillRectangle(CropHandleBrush, cropRect.Left - half, cropRect.Top - half, hs, hs);
+        g.FillRectangle(CropHandleBrush, cropRect.Right - half, cropRect.Top - half, hs, hs);
+        g.FillRectangle(CropHandleBrush, cropRect.Left - half, cropRect.Bottom - half, hs, hs);
+        g.FillRectangle(CropHandleBrush, cropRect.Right - half, cropRect.Bottom - half, hs, hs);
+    }
+
+    private static bool IsFullPage(RectangleF r) =>
+        r.X <= 0.005f && r.Y <= 0.005f && r.Width >= 0.99f && r.Height >= 0.99f;
+
+    private CropEdge HitTestCropEdge(Rectangle cropRect, RectangleF normCrop, Point pt)
+    {
+        const int tol = 8;
+
+        bool nearLeft = Math.Abs(pt.X - cropRect.Left) <= tol;
+        bool nearRight = Math.Abs(pt.X - cropRect.Right) <= tol;
+        bool nearTop = Math.Abs(pt.Y - cropRect.Top) <= tol;
+        bool nearBottom = Math.Abs(pt.Y - cropRect.Bottom) <= tol;
+
+        if (IsSKeyPressed() && cropRect.Contains(pt))
+        {
+            return CropEdge.PanContent;
+        }
+
+        // Prioridad 1: Esquinas
+        if (nearTop && nearLeft) return CropEdge.TopLeft;
+        if (nearTop && nearRight) return CropEdge.TopRight;
+        if (nearBottom && nearLeft) return CropEdge.BottomLeft;
+        if (nearBottom && nearRight) return CropEdge.BottomRight;
+
+        // Prioridad 2: Lados
+        bool withinX = pt.X >= cropRect.Left - tol && pt.X <= cropRect.Right + tol;
+        bool withinY = pt.Y >= cropRect.Top - tol && pt.Y <= cropRect.Bottom + tol;
+
+        if (withinX && nearTop) return CropEdge.Top;
+        if (withinX && nearBottom) return CropEdge.Bottom;
+        if (withinY && nearLeft) return CropEdge.Left;
+        if (withinY && nearRight) return CropEdge.Right;
+
+        // Prioridad 3: Interior para mover el recuadro (solo si ya fue recortado, para no bloquear Drag & Drop en hojas sin recortar)
+        if (!IsFullPage(normCrop) && cropRect.Contains(pt))
+        {
+            return CropEdge.Move;
+        }
+
+        return CropEdge.None;
+    }
+
+    private bool HandleCropMouseDown(Point pt)
+    {
+        var item = _view.GetItemAt(pt.X, pt.Y);
+        if (item?.Tag is NAPS2.Images.UiImage uiImg)
+        {
+            var imgRect = GetItemImageRect(item);
+            var normCrop = GetEffectiveNormalizedCrop(uiImg);
+            var cropRect = GetCropScreenRect(imgRect, normCrop);
+            var edge = HitTestCropEdge(cropRect, normCrop, pt);
+
+            if (edge != CropEdge.None)
+            {
+                _activeResizeEdge = edge;
+                _resizingItem = item;
+                _dragStartMouse = pt;
+                _dragStartCrop = normCrop;
+                _dragStartOffset = uiImg.ContentOffset;
+                uiImg.PrintCropRegion ??= normCrop;
+                _view.Capture = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private bool HandleCropMouseMove(Point pt)
+    {
+        if (_activeResizeEdge != CropEdge.None && (System.Windows.Forms.Control.MouseButtons & MouseButtons.Left) == 0)
+        {
+            HandleCropMouseUp(pt);
+            return false;
+        }
+
+        if (_activeResizeEdge != CropEdge.None && _resizingItem?.Tag is NAPS2.Images.UiImage resizingUi)
+        {
+            var imgRect = GetItemImageRect(_resizingItem);
+            if (imgRect.Width > 0 && imgRect.Height > 0)
+            {
+                const float minSize = 0.05f;
+
+                if (_activeResizeEdge == CropEdge.PanContent)
+                {
+                    float dx = (pt.X - _dragStartMouse.X) / (float)imgRect.Width;
+                    float dy = (pt.Y - _dragStartMouse.Y) / (float)imgRect.Height;
+                    resizingUi.ContentOffset = new PointF(
+                        Math.Clamp(_dragStartOffset.X + dx, -0.95f, 0.95f),
+                        Math.Clamp(_dragStartOffset.Y + dy, -0.95f, 0.95f));
+                    _view.Invalidate(_resizingItem.Bounds);
+                    return true;
+                }
+                else if (_activeResizeEdge == CropEdge.Move)
+                {
+                    float dx = (pt.X - _dragStartMouse.X) / (float)imgRect.Width;
+                    float dy = (pt.Y - _dragStartMouse.Y) / (float)imgRect.Height;
+
+                    float newX = Math.Clamp(_dragStartCrop.X + dx, 0f, 1f - _dragStartCrop.Width);
+                    float newY = Math.Clamp(_dragStartCrop.Y + dy, 0f, 1f - _dragStartCrop.Height);
+
+                    resizingUi.PrintCropRegion = new RectangleF(newX, newY, _dragStartCrop.Width, _dragStartCrop.Height);
+                }
+                else
+                {
+                    var r = GetEffectiveNormalizedCrop(resizingUi);
+                    float left = r.Left, top = r.Top, right = r.Right, bottom = r.Bottom;
+
+                    float nx = Math.Clamp((pt.X - imgRect.X) / (float)imgRect.Width, 0f, 1f);
+                    float ny = Math.Clamp((pt.Y - imgRect.Y) / (float)imgRect.Height, 0f, 1f);
+
+                    if (_activeResizeEdge is CropEdge.Top or CropEdge.TopLeft or CropEdge.TopRight)
+                        top = Math.Min(ny, bottom - minSize);
+                    if (_activeResizeEdge is CropEdge.Bottom or CropEdge.BottomLeft or CropEdge.BottomRight)
+                        bottom = Math.Max(ny, top + minSize);
+                    if (_activeResizeEdge is CropEdge.Left or CropEdge.TopLeft or CropEdge.BottomLeft)
+                        left = Math.Min(nx, right - minSize);
+                    if (_activeResizeEdge is CropEdge.Right or CropEdge.TopRight or CropEdge.BottomRight)
+                        right = Math.Max(nx, left + minSize);
+
+                    resizingUi.PrintCropRegion = new RectangleF(left, top, right - left, bottom - top);
+                }
+
+                _view.Invalidate(_resizingItem.Bounds);
+            }
+            return true;
+        }
+
+
+        // Actualizar cursor al pasar sobre esquinas, lados o interior movible
+        var hoverItem = _view.GetItemAt(pt.X, pt.Y);
+        if (hoverItem?.Tag is NAPS2.Images.UiImage hoverUi)
+        {
+            var imgRect = GetItemImageRect(hoverItem);
+            var normCrop = GetEffectiveNormalizedCrop(hoverUi);
+            var cropRect = GetCropScreenRect(imgRect, normCrop);
+            var edge = HitTestCropEdge(cropRect, normCrop, pt);
+
+            switch (edge)
+            {
+                case CropEdge.TopLeft:
+                case CropEdge.BottomRight:
+                    _view.Cursor = Cursors.SizeNWSE;
+                    return true;
+                case CropEdge.TopRight:
+                case CropEdge.BottomLeft:
+                    _view.Cursor = Cursors.SizeNESW;
+                    return true;
+                case CropEdge.Top:
+                case CropEdge.Bottom:
+                    _view.Cursor = Cursors.SizeNS;
+                    return true;
+                case CropEdge.Left:
+                case CropEdge.Right:
+                    _view.Cursor = Cursors.SizeWE;
+                    return true;
+                case CropEdge.Move:
+                case CropEdge.PanContent:
+                    _view.Cursor = Cursors.SizeAll;
+                    return true;
+            }
+        }
+
+        if (!_behavior.UseHandCursor && _view.Cursor != Cursors.Default)
+        {
+            _view.Cursor = Cursors.Default;
+        }
+
+        return false;
+    }
+
+    private bool HandleCropMouseUp(Point pt)
+    {
+        if (_activeResizeEdge == CropEdge.None)
+        {
+            return false;
+        }
+
+        if (_activeResizeEdge == CropEdge.PanContent && _resizingItem?.Tag is NAPS2.Images.UiImage panUi)
+        {
+            if (panUi.ContentOffset != _dragStartOffset)
+            {
+                panUi.CommitContentOffset(_dragStartOffset, panUi.ContentOffset);
+            }
+        }
+
+        _activeResizeEdge = CropEdge.None;
+        _resizingItem = null;
+        _view.Capture = false;
+        _view.Cursor = Cursors.Default;
+        _view.Invalidate();
+        return true;
+    }
+
+    private static void DrawThumbnailWithOffset(Graphics g, ListViewItem item, Image image, Rectangle imgRect)
+    {
+        if (item.Tag is NAPS2.Images.UiImage uiImg && uiImg.ContentOffset != PointF.Empty)
+        {
+            g.FillRectangle(Brushes.White, imgRect);
+            var oldClip = g.Clip;
+            g.SetClip(imgRect);
+
+            float drawX = imgRect.X + uiImg.ContentOffset.X * imgRect.Width;
+            float drawY = imgRect.Y + uiImg.ContentOffset.Y * imgRect.Height;
+            g.DrawImage(image, drawX, drawY, imgRect.Width, imgRect.Height);
+
+            g.Clip = oldClip;
+        }
+        else
+        {
+            g.DrawImage(image, imgRect);
+        }
+    }
+
+    private void OnContentOffsetChanged(object? sender, EventArgs e)
+    {
+        if (_view.IsDisposed) return;
+
+        void RefreshItem()
+        {
+            if (sender is NAPS2.Images.UiImage changedUi)
+            {
+                foreach (ListViewItem item in _view.Items)
+                {
+                    if (ReferenceEquals(item.Tag, changedUi))
+                    {
+                        _view.Invalidate(item.Bounds);
+                        return;
+                    }
+                }
+            }
+            _view.Invalidate();
+        }
+
+        if (_view.InvokeRequired)
+        {
+            _view.BeginInvoke((Action)RefreshItem);
+        }
+        else
+        {
+            RefreshItem();
+        }
+    }
+}
+
+internal static class NativeKeyHelper
+{
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern short GetKeyState(int nVirtKey);
+
+    public static bool IsSKeyPressed() => (GetKeyState((int)Keys.S) & 0x8000) != 0;
+}
+
+public static class ContentOffsetEvents
+{
+    public static event Action<NAPS2.Images.UiImage, PointF, PointF>? ContentOffsetCommitted;
+
+    public static void RaiseCommitted(NAPS2.Images.UiImage image, PointF oldOffset, PointF newOffset)
+    {
+        ContentOffsetCommitted?.Invoke(image, oldOffset, newOffset);
     }
 }

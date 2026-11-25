@@ -516,18 +516,22 @@ public class DesktopController
         var state = _imageList.CurrentState;
         using var allImages = _imageList.Images.Select(x => x.GetClonedImage()).ToDisposableList();
         using var selectedImages = _imageList.Selection.Select(x => x.GetClonedImage()).ToDisposableList();
+        var allCropRegions = _imageList.Images.Select(x => x.PrintCropRegion).ToList();
+        var selectedCropRegions = _imageList.Selection.Select(x => x.PrintCropRegion).ToList();
+
         if (await _scannedImagePrinter.PromptToPrint(
-                _desktopFormProvider.DesktopForm, allImages.InnerList, selectedImages.InnerList))
+                _desktopFormProvider.DesktopForm,
+                allImages.InnerList,
+                selectedImages.InnerList,
+                allCropRegions,
+                selectedCropRegions))
         {
-            // Ideally we would know the exact images saved but it's not a big deal to get it wrong for printing which
-            // is pretty uncommon.
             _imageList.MarkSaved(state, allImages);
         }
     }
-
     public bool HighQualityPhotocopy { get; set; }
 
-    public async Task Photocopy(int brightness, int contrast)
+    public async Task Photocopy(int brightness, int contrast, bool grayscale = true)
     {
         var targetUiImages = _imageList.Selection.Any()
             ? _imageList.Selection.ToList()
@@ -535,12 +539,13 @@ public class DesktopController
 
         if (!targetUiImages.Any()) return;
 
-        List<Transform> photocopyTransforms =
-        [
-            new GrayscaleTransform(),
-            new BrightnessTransform(brightness),
-            new TrueContrastTransform(contrast)
-        ];
+        List<Transform> photocopyTransforms = [];
+        if (grayscale)
+        {
+            photocopyTransforms.Add(new GrayscaleTransform());
+        }
+        photocopyTransforms.Add(new BrightnessTransform(brightness));
+        photocopyTransforms.Add(new TrueContrastTransform(contrast));
 
         var state = _imageList.CurrentState;
         var clonedList = new List<ProcessedImage>();
@@ -566,8 +571,10 @@ public class DesktopController
                 clonedList.Add(transformedClone);
             }
 
+            var cropRegions = targetUiImages.Select(x => x.PrintCropRegion).ToList();
+
             // 3. Mandamos a imprimir los clones filtrados sin haber tocado la imagen en pantalla
-            if (await _scannedImagePrinter.PrintSilent(clonedList, HighQualityPhotocopy))
+            if (await _scannedImagePrinter.PrintSilent(clonedList, HighQualityPhotocopy, cropRegions))
             {
                 _imageList.MarkSaved(state, clonedList);
             }

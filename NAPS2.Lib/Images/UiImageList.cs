@@ -258,4 +258,38 @@ public class UiImageList
             return ObjectHelpers.ListHashCode(ImageReferences);
         }
     }
+
+    public void RecordContentOffsetUndo(UiImage image, System.Drawing.PointF oldOffset, System.Drawing.PointF newOffset)
+    {
+        if (oldOffset == newOffset) return;
+        PushUndoElement(new ContentOffsetUndoElement(this, image, oldOffset, newOffset));
+        ImagesUpdated?.Invoke(this, new ImageListEventArgs(false));
+    }
+
+    internal void NotifyImagesUpdated()
+    {
+        ImagesUpdated?.Invoke(this, new ImageListEventArgs(false));
+    }
+}
+
+
+internal class ContentOffsetUndoElement(
+    UiImageList imageList,
+    UiImage image,
+    System.Drawing.PointF oldOffset,
+    System.Drawing.PointF newOffset) : IUndoElement
+{
+    public void ApplyUndo()
+    {
+        image.ContentOffset = oldOffset;
+        image.ThumbnailChanged?.Invoke(image, EventArgs.Empty);
+        imageList.NotifyImagesUpdated();
+    }
+
+    public void ApplyRedo()
+    {
+        image.ContentOffset = newOffset;
+        image.ThumbnailChanged?.Invoke(image, EventArgs.Empty);
+        imageList.NotifyImagesUpdated();
+    }
 }

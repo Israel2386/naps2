@@ -196,10 +196,15 @@ public static class CredentialMerger
         return debugImg;
     }
 
-    public static ProcessedImage CreateCleanTempCredentialImage(ProcessedImage srcImg, out string tempPath)
+    public static ProcessedImage CreateCleanTempCredentialImage(
+        ProcessedImage srcImg,
+        out string tempPath,
+        System.Drawing.RectangleF? normalizedRegion = null)
     {
         using var rendered = srcImg.Render();
-        using var cleanedMem = CleanOutsideCredentialBounds(rendered);
+        using var cleanedMem = normalizedRegion.HasValue
+            ? CleanOutsideNormalizedRect(rendered, normalizedRegion.Value)
+            : CleanOutsideCredentialBounds(rendered);
 
         tempPath = Path.Combine(Path.GetTempPath(), $"naps2_print_{Guid.NewGuid():N}.png");
         using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
@@ -231,8 +236,8 @@ public static class CredentialMerger
 
         int marginX = Math.Min(25, w / 10);
         int marginY = Math.Min(25, h / 10);
-        int minDarkPixelsInRow = Math.Max(80, w / 6);
-        const byte darknessThreshold = 215;
+        int minDarkPixelsInRow = Math.Max(20, w / 25);
+        const byte darknessThreshold = 220;
 
         int minY = -1, maxY = -1;
 
@@ -290,19 +295,82 @@ public static class CredentialMerger
 
         if (maxY == -1) return cleanImg;
 
-        int keepTopY = Math.Max(0, minY - 8);
-        int keepBottomY = Math.Min(h - 1, maxY + 8);
+        int spanY = Math.Max(1, maxY - minY);
+        int minDarkPixelsInCol = Math.Max(15, spanY / 25);
+        int minX = -1, maxX = -1;
 
-        // 3. Blanquear a blanco puro RGB(255,255,255) todo lo que está fuera de [keepTopY, keepBottomY]
+        // 3. Escaneo de izquierda a derecha (dentro del rango [minY, maxY])
+        for (int x = marginX; x < w - marginX; x++)
+        {
+            int darkCount = 0;
+            for (int y = minY; y <= maxY; y++)
+            {
+                int srcY = data.invertY ? (h - 1 - y) : y;
+                byte* px = ptr + (srcY * data.stride) + (x * bpp);
+                if (px[data.rOff] < darknessThreshold &&
+                    px[data.gOff] < darknessThreshold &&
+                    px[data.bOff] < darknessThreshold)
+                {
+                    darkCount++;
+                    if (darkCount >= minDarkPixelsInCol)
+                    {
+                        minX = x;
+                        break;
+                    }
+                }
+            }
+            if (minX != -1) break;
+        }
+
+        if (minX == -1) minX = marginX;
+
+        // 4. Escaneo de derecha a izquierda (dentro del rango [minY, maxY])
+        for (int x = w - 1 - marginX; x >= minX; x--)
+        {
+            int darkCount = 0;
+            for (int y = minY; y <= maxY; y++)
+            {
+                int srcY = data.invertY ? (h - 1 - y) : y;
+                byte* px = ptr + (srcY * data.stride) + (x * bpp);
+                if (px[data.rOff] < darknessThreshold &&
+                    px[data.gOff] < darknessThreshold &&
+                    px[data.bOff] < darknessThreshold)
+                {
+                    darkCount++;
+                    if (darkCount >= minDarkPixelsInCol)
+                    {
+                        maxX = x;
+                        break;
+                    }
+                }
+            }
+            if (maxX != -1) break;
+        }
+
+        if (maxX == -1) maxX = w - 1 - marginX;
+
+        // 5. Tolerancias amplias arriba, abajo, izquierda y derecha (35 px)
+        const int toleranceY = 35;
+        const int toleranceX = 35;
+
+        int keepTopY = Math.Max(0, minY - toleranceY);
+        int keepBottomY = Math.Min(h - 1, maxY + toleranceY);
+        int keepLeftX = Math.Max(0, minX - toleranceX);
+        int keepRightX = Math.Min(w - 1, maxX + toleranceX);
+
+        // 6. Blanquear a blanco puro RGB(255,255,255) todo lo que está fuera del rectángulo
         for (int y = 0; y < h; y++)
         {
-            if (y >= keepTopY && y <= keepBottomY) continue;
-
             int actualY = data.invertY ? (h - 1 - y) : y;
             byte* row = ptr + (actualY * data.stride);
 
             for (int x = 0; x < w; x++)
             {
+                if (y >= keepTopY && y <= keepBottomY && x >= keepLeftX && x <= keepRightX)
+                {
+                    continue;
+                }
+
                 byte* px = row + (x * bpp);
                 px[data.rOff] = 255;
                 px[data.gOff] = 255;
@@ -382,6 +450,174 @@ public static class CredentialMerger
         }
 
         return (leftCanvas, rightCanvas);
+    }
+
+    public static bool IsFullPageRegion(System.Drawing.RectangleF? region)
+    {
+        if (!region.HasValue) return true;
+        var r = region.Value;
+        return r.X <= 0.005f && r.Y <= 0.005f && r.Width >= 0.99f && r.Height >= 0.99f;
+    }
+
+    public static ProcessedImage CreateMaskedPageTempImage(
+        ProcessedImage srcImg,
+        System.Drawing.RectangleF normRect,
+        out string tempPath)
+    {
+        using var rendered = srcImg.Render();
+        using var maskedMem = CleanOutsideNormalizedRect(rendered, normRect);
+
+        tempPath = Path.Combine(Path.GetTempPath(), $"naps2_crop_print_{Guid.NewGuid():N}.png");
+        using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+        {
+            maskedMem.Save(fs, ImageFileFormat.Png);
+            fs.Flush(true);
+        }
+
+        var fileStorage = new ImageFileStorage(tempPath);
+        return new ProcessedImage(
+            maskedMem.ImageContext,
+            fileStorage,
+            srcImg.Metadata,
+            new PostProcessingData(),
+            TransformState.Empty,
+            new RefCount(fileStorage)
+        );
+    }
+
+    public static unsafe IMemoryImage CleanOutsideNormalizedRect(IMemoryImage sourceImage, System.Drawing.RectangleF normRect)
+    {
+        var cleanImg = sourceImage.Clone();
+        using var lockData = cleanImg.Lock(LockMode.ReadWrite, out var data);
+
+        int w = data.w;
+        int h = data.h;
+        byte* ptr = data.ptr;
+        int bpp = data.bytesPerPixel;
+
+        int keepLeft = Math.Clamp((int)Math.Round(normRect.Left * w), 0, w - 1);
+        int keepRight = Math.Clamp((int)Math.Round(normRect.Right * w), 0, w - 1);
+        int keepTop = Math.Clamp((int)Math.Round(normRect.Top * h), 0, h - 1);
+        int keepBottom = Math.Clamp((int)Math.Round(normRect.Bottom * h), 0, h - 1);
+
+        for (int y = 0; y < h; y++)
+        {
+            int actualY = data.invertY ? (h - 1 - y) : y;
+            byte* row = ptr + (actualY * data.stride);
+
+            for (int x = 0; x < w; x++)
+            {
+                if (y >= keepTop && y <= keepBottom && x >= keepLeft && x <= keepRight)
+                {
+                    continue;
+                }
+
+                byte* px = row + (x * bpp);
+                px[data.rOff] = 255;
+                px[data.gOff] = 255;
+                px[data.bOff] = 255;
+                if (data.hasAlpha)
+                {
+                    px[data.aOff] = 255;
+                }
+            }
+        }
+
+        return cleanImg;
+    }
+
+    public static unsafe ProcessedImage ApplyOffsetAndCropTempImage(
+    ProcessedImage srcImg,
+    System.Drawing.PointF contentOffset,
+    System.Drawing.RectangleF? normalizedRegion,
+    bool autoCleanCredential,
+    out string tempPath)
+    {
+        using var rendered = srcImg.Render();
+        IMemoryImage canvasMem;
+
+        if (contentOffset == System.Drawing.PointF.Empty)
+        {
+            canvasMem = rendered.Clone();
+        }
+        else
+        {
+            canvasMem = rendered.ImageContext.Create(rendered.Width, rendered.Height, rendered.PixelFormat);
+            canvasMem.SetResolution(rendered.HorizontalResolution, rendered.VerticalResolution);
+
+            using var srcLock = rendered.Lock(LockMode.ReadOnly, out var srcData);
+            using var dstLock = canvasMem.Lock(LockMode.WriteOnly, out var dstData);
+
+            int w = dstData.w;
+            int h = dstData.h;
+            int bpp = dstData.bytesPerPixel;
+            int offsetX = (int)Math.Round(contentOffset.X * w);
+            int offsetY = (int)Math.Round(contentOffset.Y * h);
+
+            for (int y = 0; y < h; y++)
+            {
+                int dstActualY = dstData.invertY ? (h - 1 - y) : y;
+                byte* dstRow = dstData.ptr + (dstActualY * dstData.stride);
+
+                int srcY = y - offsetY;
+                bool validY = srcY >= 0 && srcY < h;
+                byte* srcRow = validY
+                    ? srcData.ptr + ((srcData.invertY ? (h - 1 - srcY) : srcY) * srcData.stride)
+                    : null;
+
+                for (int x = 0; x < w; x++)
+                {
+                    byte* dstPx = dstRow + (x * bpp);
+                    int srcX = x - offsetX;
+
+                    if (validY && srcX >= 0 && srcX < w)
+                    {
+                        byte* srcPx = srcRow + (srcX * srcData.bytesPerPixel);
+                        dstPx[dstData.rOff] = srcPx[srcData.rOff];
+                        dstPx[dstData.gOff] = srcPx[srcData.gOff];
+                        dstPx[dstData.bOff] = srcPx[srcData.bOff];
+                        if (dstData.hasAlpha)
+                        {
+                            dstPx[dstData.aOff] = srcData.hasAlpha ? srcPx[srcData.aOff] : (byte)255;
+                        }
+                    }
+                    else
+                    {
+                        dstPx[dstData.rOff] = 255;
+                        dstPx[dstData.gOff] = 255;
+                        dstPx[dstData.bOff] = 255;
+                        if (dstData.hasAlpha)
+                        {
+                            dstPx[dstData.aOff] = 255;
+                        }
+                    }
+                }
+            }
+        }
+
+        using (canvasMem)
+        {
+            using var cleanedMem = normalizedRegion.HasValue
+                ? CleanOutsideNormalizedRect(canvasMem, normalizedRegion.Value)
+                : (autoCleanCredential ? CleanOutsideCredentialBounds(canvasMem) : canvasMem.Clone());
+
+            tempPath = Path.Combine(Path.GetTempPath(), $"naps2_pan_print_{Guid.NewGuid():N}.png");
+            using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+            {
+                cleanedMem.Save(fs, ImageFileFormat.Png);
+                fs.Flush(true);
+            }
+
+            var fileStorage = new ImageFileStorage(tempPath);
+            return new ProcessedImage(
+                cleanedMem.ImageContext,
+                fileStorage,
+                srcImg.Metadata,
+                new PostProcessingData(),
+                TransformState.Empty,
+                new RefCount(fileStorage)
+            );
+        }
     }
 
 }

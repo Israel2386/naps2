@@ -150,4 +150,12 @@ public abstract class ImageListMutation : ListMutation<UiImage>
             selection = ListSelection.From(originals.Select(x => x.Original));
         }
     }
+
+    public class SetContentOffset(UiImage target, System.Drawing.PointF newOffset) : ImageListMutation
+    {
+        public override void Apply(List<UiImage> list, ref ListSelection<UiImage> selection)
+        {
+            target.ContentOffset = newOffset;
+        }
+    }
 }

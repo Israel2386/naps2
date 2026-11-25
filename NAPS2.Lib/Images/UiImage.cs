@@ -10,6 +10,21 @@ public class UiImage : IDisposable
     private IMemoryImage? _thumbnail;
     private TransformState? _thumbnailTransformState;
     private bool _saved;
+    private System.Drawing.PointF _contentOffset = System.Drawing.PointF.Empty;
+    public System.Drawing.PointF ContentOffset
+    {
+        get => _contentOffset;
+        set
+        {
+            if (_contentOffset != value)
+            {
+                _contentOffset = value;
+                ContentOffsetChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public static event EventHandler? ContentOffsetChanged;
 
     public UiImage(ProcessedImage image, bool useThumbnail = true)
     {
@@ -26,6 +41,19 @@ public class UiImage : IDisposable
     /// Gets a clone of the current underlying ProcessedImage that must be later disposed.
     /// </summary>
     /// <returns></returns>
+    /// 
+    /// <summary>
+    /// Región normalizada (0.0 a 1.0) que define qué área de la hoja se conservará al imprimir.
+    /// </summary>
+    public System.Drawing.RectangleF? PrintCropRegion { get; set; }
+
+    //public System.Drawing.PointF ContentOffset { get; set; } = System.Drawing.PointF.Empty;
+    public static event Action<UiImage, System.Drawing.PointF, System.Drawing.PointF>? ContentOffsetCommitted;
+
+    public void CommitContentOffset(System.Drawing.PointF oldOffset, System.Drawing.PointF newOffset)
+    {
+        ContentOffsetCommitted?.Invoke(this, oldOffset, newOffset);
+    }
     public ProcessedImage GetClonedImage()
     {
         lock (this)
