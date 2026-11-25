@@ -82,6 +82,26 @@ public class DesktopController
 
     public bool SkipRecoveryCleanup { get; set; }
 
+    public void ResetLayout()
+    {
+        var selected = _imageList.Selection.ToList();
+        if (!selected.Any()) return;
+
+        var changes = selected
+            .Where(img => img.ContentOffset != System.Drawing.PointF.Empty || img.PrintCropRegion != null)
+            .Select(img => (img, img.ContentOffset, System.Drawing.PointF.Empty, img.PrintCropRegion, (System.Drawing.RectangleF?)null))
+            .ToList();
+
+        if (changes.Count == 0) return;
+
+        foreach (var (img, _, _, _, _) in changes)
+        {
+            img.PrintCropRegion = null;
+            img.ContentOffset = System.Drawing.PointF.Empty;
+        }
+
+        _imageList.RecordLayoutChangesUndo(changes);
+    }
     public void PreInitialize()
     {
         if (_preInitialized) return;

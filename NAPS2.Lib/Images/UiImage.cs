@@ -54,6 +54,12 @@ public class UiImage : IDisposable
     {
         ContentOffsetCommitted?.Invoke(this, oldOffset, newOffset);
     }
+    public static event Action<UiImage, System.Drawing.RectangleF?, System.Drawing.RectangleF?>? PrintCropCommitted;
+
+    public void CommitPrintCrop(System.Drawing.RectangleF? oldCrop, System.Drawing.RectangleF? newCrop)
+    {
+        PrintCropCommitted?.Invoke(this, oldCrop, newCrop);
+    }
     public ProcessedImage GetClonedImage()
     {
         lock (this)

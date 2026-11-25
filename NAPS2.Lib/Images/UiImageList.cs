@@ -270,6 +270,18 @@ public class UiImageList
     {
         ImagesUpdated?.Invoke(this, new ImageListEventArgs(false));
     }
+
+    public void RecordLayoutChangesUndo(
+        List<(UiImage Image, System.Drawing.PointF OldOffset, System.Drawing.PointF NewOffset, System.Drawing.RectangleF? OldCrop, System.Drawing.RectangleF? NewCrop)> changes)
+    {
+        var valid = changes
+            .Where(x => x.OldOffset != x.NewOffset || x.OldCrop != x.NewCrop)
+            .ToList();
+        if (valid.Count == 0) return;
+
+        PushUndoElement(new ImageLayoutUndoElement(this, valid));
+        ImagesUpdated?.Invoke(this, new ImageListEventArgs(false));
+    }
 }
 
 
@@ -290,6 +302,31 @@ internal class ContentOffsetUndoElement(
     {
         image.ContentOffset = newOffset;
         image.ThumbnailChanged?.Invoke(image, EventArgs.Empty);
+        imageList.NotifyImagesUpdated();
+    }
+}
+
+internal class ImageLayoutUndoElement(
+    UiImageList imageList,
+    List<(UiImage Image, System.Drawing.PointF OldOffset, System.Drawing.PointF NewOffset, System.Drawing.RectangleF? OldCrop, System.Drawing.RectangleF? NewCrop)> changes) : IUndoElement
+{
+    public void ApplyUndo()
+    {
+        foreach (var (image, oldOffset, _, oldCrop, _) in changes)
+        {
+            image.PrintCropRegion = oldCrop;
+            image.ContentOffset = oldOffset;
+        }
+        imageList.NotifyImagesUpdated();
+    }
+
+    public void ApplyRedo()
+    {
+        foreach (var (image, _, newOffset, _, newCrop) in changes)
+        {
+            image.PrintCropRegion = newCrop;
+            image.ContentOffset = newOffset;
+        }
         imageList.NotifyImagesUpdated();
     }
 }

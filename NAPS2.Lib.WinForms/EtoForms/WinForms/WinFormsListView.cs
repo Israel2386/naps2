@@ -52,7 +52,21 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
     private static readonly Pen CropBorderPen = new(Color.FromArgb(220, 229, 57, 53), 2f);
     private static readonly SolidBrush CropHandleBrush = new(Color.FromArgb(229, 57, 53));
     private static readonly SolidBrush CropOutsideShadeBrush = new(Color.FromArgb(45, 0, 0, 0));
+    private static readonly SolidBrush ResetBtnBrush = new(Color.FromArgb(230, 229, 57, 53));
+    private static readonly Pen ResetArrowPen = new(Color.White, 1.6f)
+    {
+        StartCap = System.Drawing.Drawing2D.LineCap.Round,
+        EndCap = System.Drawing.Drawing2D.LineCap.Round
+    };
 
+    private static Rectangle GetCropResetButtonRect(Rectangle cropRect)
+    {
+        const int btnSize = 18;
+        // Ubicado justo encima/dentro de la esquina superior derecha del recuadro rojo
+        int bx = cropRect.Right - btnSize - 4;
+        int by = cropRect.Top + 4;
+        return new Rectangle(bx, by, btnSize, btnSize);
+    }
     public WinFormsListView(ListViewBehavior<T> behavior)
     {
         _behavior = behavior;
@@ -749,6 +763,30 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
         g.FillRectangle(CropHandleBrush, cropRect.Right - half, cropRect.Top - half, hs, hs);
         g.FillRectangle(CropHandleBrush, cropRect.Left - half, cropRect.Bottom - half, hs, hs);
         g.FillRectangle(CropHandleBrush, cropRect.Right - half, cropRect.Bottom - half, hs, hs);
+
+        // Botón circular de reinicio de recorte (solo si no es un recorte completo)
+        if (!IsFullPage(norm))
+        {
+            var btnRect = GetCropResetButtonRect(cropRect);
+            var oldSmoothing = g.SmoothingMode;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            // Fondo circular rojo con borde blanco sutil
+            g.FillEllipse(ResetBtnBrush, btnRect);
+            g.DrawEllipse(Pens.White, btnRect);
+
+            // Arco de flecha circular (270 grados)
+            var arcRect = new RectangleF(btnRect.X + 4.2f, btnRect.Y + 4.2f, btnRect.Width - 8.4f, btnRect.Height - 8.4f);
+            g.DrawArc(ResetArrowPen, arcRect, -45f, 275f);
+
+            // Punta de flecha en el extremo superior derecho del arco
+            float tipX = arcRect.Right - 0.5f;
+            float tipY = arcRect.Top + arcRect.Height * 0.28f;
+            g.DrawLine(ResetArrowPen, tipX, tipY, tipX - 3.2f, tipY - 0.6f);
+            g.DrawLine(ResetArrowPen, tipX, tipY, tipX - 0.4f, tipY - 3.2f);
+
+            g.SmoothingMode = oldSmoothing;
+        }
     }
 
     private static bool IsFullPage(RectangleF r) =>
@@ -800,6 +838,17 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
             var imgRect = GetItemImageRect(item);
             var normCrop = GetEffectiveNormalizedCrop(uiImg);
             var cropRect = GetCropScreenRect(imgRect, normCrop);
+
+            // Si se hace clic en el botón de reinicio de recorte, restablecer el recorte a completo
+            if (!IsFullPage(normCrop) && GetCropResetButtonRect(cropRect).Contains(pt))
+            {
+                var oldCrop = uiImg.PrintCropRegion;
+                uiImg.PrintCropRegion = null;
+                uiImg.CommitPrintCrop(oldCrop, null); // Registra Undo/Redo (ver paso 2)
+                _view.Invalidate(item.Bounds);
+                return true;
+            }
+
             var edge = HitTestCropEdge(cropRect, normCrop, pt);
 
             if (edge != CropEdge.None)
@@ -819,12 +868,14 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
 
     private bool HandleCropMouseMove(Point pt)
     {
+        //
         if (_activeResizeEdge != CropEdge.None && (System.Windows.Forms.Control.MouseButtons & MouseButtons.Left) == 0)
         {
             HandleCropMouseUp(pt);
             return false;
         }
 
+        // Si se está arrastrando un borde o esquina, actualizar el recorte en tiempo real
         if (_activeResizeEdge != CropEdge.None && _resizingItem?.Tag is NAPS2.Images.UiImage resizingUi)
         {
             var imgRect = GetItemImageRect(_resizingItem);
@@ -885,6 +936,14 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
             var imgRect = GetItemImageRect(hoverItem);
             var normCrop = GetEffectiveNormalizedCrop(hoverUi);
             var cropRect = GetCropScreenRect(imgRect, normCrop);
+
+            // Si el cursor está sobre el botón de reinicio de recorte, mostrar cursor de mano
+            if (!IsFullPage(normCrop) && GetCropResetButtonRect(cropRect).Contains(pt))
+            {
+                _view.Cursor = Cursors.Hand;
+                return true;
+            }
+
             var edge = HitTestCropEdge(cropRect, normCrop, pt);
 
             switch (edge)
@@ -916,7 +975,7 @@ public class WinFormsListView<T> : IListView<T> where T : notnull
         {
             _view.Cursor = Cursors.Default;
         }
-
+        
         return false;
     }
 

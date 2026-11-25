@@ -189,6 +189,12 @@ public class DesktopCommands
             IconName = "split"
         };
 
+        ResetLayout = new ActionCommand(desktopController.ResetLayout)
+        {
+            Text = "Reset a Original",
+            IconName = "arrow_undo"
+        };
+
         ImageMenu = new ActionCommand
         {
             Text = UiStrings.Image,
@@ -518,6 +524,7 @@ public class DesktopCommands
     public ActionCommand PhotocopyColorNormal { get; }
     public ActionCommand PhotocopyColorLight { get; }
     public ActionCommand PhotocopyColorDark { get; }
+    public ActionCommand ResetLayout { get; set; }
 
     public void TestCredentialBoundsVisual()
     {

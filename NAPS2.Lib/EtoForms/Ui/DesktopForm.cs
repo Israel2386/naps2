@@ -187,6 +187,7 @@ public abstract class DesktopForm : EtoFormBase
                 new SeparatorMenuItem(),
                 C.ButtonMenuItem(this, Commands.Undo),
                 C.ButtonMenuItem(this, Commands.Redo),
+                C.ButtonMenuItem(this, Commands.ResetLayout),
                 new SeparatorMenuItem(),
                 C.ButtonMenuItem(this, Commands.Delete)
             ]);
@@ -376,6 +377,7 @@ public abstract class DesktopForm : EtoFormBase
             CreateToolbarButton(Commands.PhotocopyColorLight);
             CreateToolbarButton(Commands.PhotocopyColorNormal);
             CreateToolbarButton(Commands.PhotocopyColorDark);
+            CreateToolbarSeparator();
             CreateToolbarButton(Commands.PhotocopyLight);
             CreateToolbarButton(Commands.PhotocopyNormal);
             CreateToolbarButton(Commands.PhotocopyDark);
