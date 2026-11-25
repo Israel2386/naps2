@@ -15,10 +15,14 @@ public interface IScannedImagePrinter
         IList<ProcessedImage> images,
         IList<ProcessedImage> selectedImages,
         IList<System.Drawing.RectangleF?>? allCropRegions = null,
-        IList<System.Drawing.RectangleF?>? selectedCropRegions = null);
+        IList<System.Drawing.RectangleF?>? selectedCropRegions = null,
+        IList<System.Drawing.PointF>? allContentOffsets = null,
+        IList<System.Drawing.PointF>? selectedContentOffsets = null);
 
     Task<bool> PrintSilent(
         IList<ProcessedImage> images,
         bool highQuality = false,
-        IList<System.Drawing.RectangleF?>? cropRegions = null);
+        IList<System.Drawing.RectangleF?>? cropRegions = null,
+        IList<System.Drawing.PointF>? allContentOffsets = null,
+        IList<System.Drawing.PointF>? selectedContentOffsets = null);
 }

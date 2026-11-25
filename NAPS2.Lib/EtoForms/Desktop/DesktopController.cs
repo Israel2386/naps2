@@ -518,13 +518,17 @@ public class DesktopController
         using var selectedImages = _imageList.Selection.Select(x => x.GetClonedImage()).ToDisposableList();
         var allCropRegions = _imageList.Images.Select(x => x.PrintCropRegion).ToList();
         var selectedCropRegions = _imageList.Selection.Select(x => x.PrintCropRegion).ToList();
+        var allContentOffsets = _imageList.Images.Select(x => x.ContentOffset).ToList();
+        var selectedContentOffsets = _imageList.Selection.Select(x => x.ContentOffset).ToList();
 
         if (await _scannedImagePrinter.PromptToPrint(
                 _desktopFormProvider.DesktopForm,
                 allImages.InnerList,
                 selectedImages.InnerList,
                 allCropRegions,
-                selectedCropRegions))
+                selectedCropRegions,
+                allContentOffsets,
+                selectedContentOffsets))
         {
             _imageList.MarkSaved(state, allImages);
         }
@@ -572,9 +576,10 @@ public class DesktopController
             }
 
             var cropRegions = targetUiImages.Select(x => x.PrintCropRegion).ToList();
+            var contentOffsets = targetUiImages.Select(x => x.ContentOffset).ToList();
 
             // 3. Mandamos a imprimir los clones filtrados sin haber tocado la imagen en pantalla
-            if (await _scannedImagePrinter.PrintSilent(clonedList, HighQualityPhotocopy, cropRegions))
+            if (await _scannedImagePrinter.PrintSilent(clonedList, HighQualityPhotocopy, cropRegions, contentOffsets))
             {
                 _imageList.MarkSaved(state, clonedList);
             }

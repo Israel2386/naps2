@@ -18,7 +18,9 @@ public class PrintDocumentPrinter : IScannedImagePrinter
         IList<ProcessedImage> images,
         IList<ProcessedImage> selectedImages,
         IList<System.Drawing.RectangleF?>? allCropRegions = null,
-        IList<System.Drawing.RectangleF?>? selectedCropRegions = null)
+        IList<System.Drawing.RectangleF?>? selectedCropRegions = null,
+        IList<System.Drawing.PointF>? allContentOffsets = null,
+        IList<System.Drawing.PointF>? selectedContentOffsets = null)
     {
         if (!images.Any())
         {
@@ -45,7 +47,9 @@ public class PrintDocumentPrinter : IScannedImagePrinter
                 images,
                 selectedImages,
                 allCropRegions,
-                selectedCropRegions);
+                selectedCropRegions,
+                allContentOffsets,
+                selectedContentOffsets);
         }
         return false;
     }
@@ -55,15 +59,18 @@ public class PrintDocumentPrinter : IScannedImagePrinter
          IList<ProcessedImage> images,
          IList<ProcessedImage> selectedImages,
          IList<System.Drawing.RectangleF?>? allCropRegions = null,
-         IList<System.Drawing.RectangleF?>? selectedCropRegions = null)
+         IList<System.Drawing.RectangleF?>? selectedCropRegions = null,
+         IList<System.Drawing.PointF>? allContentOffsets = null,
+         IList<System.Drawing.PointF>? selectedContentOffsets = null)
     {
         var tempPaths = new List<string>();
         var disposables = new List<ProcessedImage>();
 
         try
         {
-            var preparedAll = ApplyCropRegions(images, allCropRegions, tempPaths, disposables);
-            var preparedSelected = ApplyCropRegions(selectedImages, selectedCropRegions, tempPaths, disposables);
+            var preparedAll = ApplyCropRegions(images, allCropRegions, allContentOffsets, tempPaths, disposables);
+            var preparedSelected = ApplyCropRegions(selectedImages, selectedCropRegions, selectedContentOffsets, tempPaths, disposables);
+            // ... el resto de Print queda idéntico ...
 
             IList<ProcessedImage> imagesToPrint;
 
@@ -162,7 +169,9 @@ public class PrintDocumentPrinter : IScannedImagePrinter
     public async Task<bool> PrintSilent(
     IList<ProcessedImage> images,
     bool highQuality = false,
-    IList<System.Drawing.RectangleF?>? cropRegions = null)
+    IList<System.Drawing.RectangleF?>? cropRegions = null,
+    IList<System.Drawing.PointF>? contentOffsets = null,
+    IList<System.Drawing.PointF>? selectedContentOffsets = null)
     {
         if (!images.Any())
         {
@@ -206,8 +215,14 @@ public class PrintDocumentPrinter : IScannedImagePrinter
             {
                 var rawRegion = (cropRegions != null && i < cropRegions.Count) ? cropRegions[i] : null;
                 var effectiveRegion = CredentialMerger.IsFullPageRegion(rawRegion) ? null : rawRegion;
+                var offset = (contentOffsets != null && i < contentOffsets.Count) ? contentOffsets[i] : System.Drawing.PointF.Empty;
 
-                var cleanImg = CredentialMerger.CreateCleanTempCredentialImage(images[i], out string tempPath, effectiveRegion);
+                var cleanImg = CredentialMerger.ApplyOffsetAndCropTempImage(
+                    images[i],
+                    offset,
+                    effectiveRegion,
+                    autoCleanCredential: true,
+                    out string tempPath);
                 list.Add((cleanImg, tempPath));
             }
             return list;
@@ -236,21 +251,30 @@ public class PrintDocumentPrinter : IScannedImagePrinter
     private static IList<ProcessedImage> ApplyCropRegions(
         IList<ProcessedImage> sourceImages,
         IList<System.Drawing.RectangleF?>? cropRegions,
+        IList<System.Drawing.PointF>? contentOffsets,
         List<string> tempPaths,
         List<ProcessedImage> disposables)
     {
-        if (cropRegions == null) return sourceImages;
+        if (cropRegions == null && contentOffsets == null) return sourceImages;
 
         var result = new List<ProcessedImage>(sourceImages.Count);
         for (int i = 0; i < sourceImages.Count; i++)
         {
-            var region = i < cropRegions.Count ? cropRegions[i] : null;
-            if (!CredentialMerger.IsFullPageRegion(region))
+            var rawRegion = (cropRegions != null && i < cropRegions.Count) ? cropRegions[i] : null;
+            var effectiveRegion = CredentialMerger.IsFullPageRegion(rawRegion) ? null : rawRegion;
+            var offset = (contentOffsets != null && i < contentOffsets.Count) ? contentOffsets[i] : System.Drawing.PointF.Empty;
+
+            if (effectiveRegion.HasValue || offset != System.Drawing.PointF.Empty)
             {
-                var masked = CredentialMerger.CreateMaskedPageTempImage(sourceImages[i], region!.Value, out var path);
+                var transformed = CredentialMerger.ApplyOffsetAndCropTempImage(
+                    sourceImages[i],
+                    offset,
+                    effectiveRegion,
+                    autoCleanCredential: false,
+                    out var path);
                 tempPaths.Add(path);
-                disposables.Add(masked);
-                result.Add(masked);
+                disposables.Add(transformed);
+                result.Add(transformed);
             }
             else
             {
